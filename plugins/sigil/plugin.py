@@ -138,10 +138,21 @@ def _line_offsets(text):
 
 
 def _char_offset(workdir, location, line, column):
-    """Sigil's results panel takes a character offset as well as a line, and
-    the offset is what puts the cursor on the right column. Computed from the
-    copy on disk, which is the same bytes epubveri was given."""
-    if not location or not line:
+    """The absolute character offset of a finding, for Sigil's results panel.
+
+    Sigil uses this **in preference to the line number** — `OpenResource`
+    takes it as `position_to_scroll_to`, a Qt document position — so it has to
+    be an offset from the start of the file rather than a column within the
+    line, and an error here moves the cursor rather than merely mislabelling
+    it.
+
+    `_line_offsets` is 0-based (`offsets[0]` is where line 1 starts) and
+    epubveri's line numbers are 1-based, so line N starts at `offsets[N - 1]`.
+    Indexing it directly with the line number put every finding one line late:
+    reported 283, highlighted 284. Only running it in Sigil could show that —
+    the test that existed checked `_line_offsets` alone and passed throughout.
+    """
+    if not location or not line or line < 1:
         return None
     path = os.path.join(workdir, location.replace("/", os.sep))
     try:
@@ -150,9 +161,9 @@ def _char_offset(workdir, location, line, column):
     except OSError:
         return None
     offsets = _line_offsets(text)
-    if line >= len(offsets):
+    if line > len(offsets):
         return None
-    return offsets[line] + max((column or 1) - 1, 0)
+    return offsets[line - 1] + max((column or 1) - 1, 0)
 
 
 def _report(bk, envelope, workdir, prefs):

@@ -12,7 +12,10 @@ here.
 - Validates the open book, including unsaved edits: the OPF Sigil currently
   holds is written into the temporary container rather than the one on disk.
 - Findings carry file, line and **character offset**, so Sigil can place the
-  cursor rather than just open the file.
+  cursor rather than just open the file. Sigil uses the offset in preference
+  to the line number, so it has to be an absolute document position; the first
+  build indexed a 0-based table with a 1-based line number and highlighted one
+  line late.
 - The binary is downloaded on first use and **verified against the release's
   `SHA256SUMS.txt`**. epubveri has published that file since 0.12.4 and nothing
   had been checking it.

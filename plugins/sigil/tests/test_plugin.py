@@ -128,8 +128,43 @@ class BuildEpubTests(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_line_and_column_map_to_a_character_offset(self):
+        """The offset must land on the character epubveri named.
+
+        The version of this test that only checked `_line_offsets` passed
+        while every finding pointed one line late — Sigil reported line 283
+        and highlighted 284 — because the bug was in the *use* of that list,
+        not in the list. So this asserts the character at the offset, which is
+        the only thing that can be wrong in a way a user sees.
+        """
         offsets = plugin._line_offsets("abc\ndefg\nhi")
         self.assertEqual(offsets[:4], [0, 4, 9, 11])
+
+        import shutil
+        import tempfile
+        text = "<html>\n  <body>\n    <p bad=\"x\">hello</p>\n  </body>\n</html>\n"
+        tmp = tempfile.mkdtemp()
+        try:
+            with open(os.path.join(tmp, "f.xhtml"), "w", encoding="utf-8") as h:
+                h.write(text)
+            cases = [
+                (1, 1, "<html>"),      # the very first character
+                (2, 3, "<body>"),      # a column inside an indented line
+                (3, 5, "<p bad="),     # the shape a real finding points at
+                (5, 1, "</html>"),     # the last line
+            ]
+            for line, column, expected in cases:
+                offset = plugin._char_offset(tmp, "f.xhtml", line, column)
+                self.assertIsNotNone(offset, (line, column))
+                self.assertTrue(
+                    text[offset:].startswith(expected),
+                    "line %d column %d gave offset %d, which is %r, not %r"
+                    % (line, column, offset, text[offset:offset + 8], expected))
+            # Out of range asks Sigil to fall back to the line number rather
+            # than pointing somewhere arbitrary.
+            self.assertIsNone(plugin._char_offset(tmp, "f.xhtml", 99, 1))
+            self.assertIsNone(plugin._char_offset(tmp, "f.xhtml", 0, 1))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 class ResultXmlTests(unittest.TestCase):
