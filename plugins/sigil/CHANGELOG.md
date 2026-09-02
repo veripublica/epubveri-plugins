@@ -36,6 +36,12 @@ here.
   installed the plugin, and almost every recent epubveri release fixed a wrong
   error on a valid book. A failed check is silent and is recorded, so an
   offline machine makes one failed request an hour rather than one per book.
+- **Offline is silent** — measured over 144 validations across three days with
+  no network: no error, no warning, nothing missing. After **thirty days**
+  without a successful check the summary adds one line saying how old the copy
+  is, because by then it may be reporting something already fixed. That needs
+  a separate `last_update_success`: the ordinary stamp is written even when a
+  check fails, so it can never say how old the binary is.
 - **Findings are escaped for Sigil's result XML.** Sigil builds that document
   by raw interpolation and escapes only some of its own strings, so a message
   containing a double quote ended the attribute and Sigil answered "Error

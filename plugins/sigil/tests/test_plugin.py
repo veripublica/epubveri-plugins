@@ -21,7 +21,7 @@ import os
 import sys
 import unittest
 import zipfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PLUGIN_DIR)
@@ -337,6 +337,47 @@ class UpdateTests(unittest.TestCase):
         path, note = plugin._ensure_binary(bk)
         self.assertIsNotNone(path)
         self.assertIsNone(note)
+
+    def test_a_long_stretch_offline_eventually_says_the_copy_is_old(self):
+        """Silent for a fortnight, one quiet line after a month.
+
+        A user offline for a weekend is not missing anything and must not be
+        told about the network. But after a month the copy in use may report
+        something that has since been fixed, and then "this is old" is the
+        explanation for a finding that looks wrong. It is information, not a
+        warning: no error, no verdict change, nothing to do until there is a
+        connection.
+
+        The distinction that makes it possible is `last_update_success`.
+        `last_update_check` is stamped even when the check fails — on purpose,
+        so an offline machine tries once an hour rather than once a book — so
+        it can never tell how old the binary actually is.
+        """
+        now = datetime.now(timezone.utc)
+        for days, expected in ((2, None), (29, None), (45, "45 days old")):
+            prefs = {
+                "installed_sha256": self.SHA_A,
+                "last_update_check": (now - timedelta(days=1)).isoformat(),
+                "last_update_success": (now - timedelta(days=days)).isoformat(),
+            }
+            self._fake(remote=self.SHA_A, check_raises=OSError("no network"))
+            _path, note = plugin._ensure_binary(FakeBk(prefs))
+            if expected is None:
+                self.assertIsNone(note, "%d days should say nothing" % days)
+            else:
+                self.assertIn(expected, note)
+
+    def test_a_stamp_written_before_timezones_is_still_readable(self):
+        """Naive stamps predate the move off the deprecated `utcnow()`. Reading
+        them as UTC rather than discarding them keeps an upgrade from forcing a
+        check on every existing install."""
+        naive = (datetime.now(timezone.utc)
+                 .replace(tzinfo=None) - timedelta(minutes=5)).isoformat()
+        age = plugin._since(naive)
+        self.assertIsNotNone(age)
+        self.assertLess(age, timedelta(hours=1))
+        self.assertIsNone(plugin._since("not a date"))
+        self.assertIsNone(plugin._since(None))
 
     def test_a_first_install_without_a_network_says_something_usable(self):
         """The uncommon case, where an error IS right: with no binary there is
