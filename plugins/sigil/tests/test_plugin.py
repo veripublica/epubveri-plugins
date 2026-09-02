@@ -324,6 +324,36 @@ class UpdateTests(unittest.TestCase):
             # ...and a failed download must not claim the new hash is installed.
             self.assertEqual(bk.prefs["installed_sha256"], self.SHA_A)
 
+    def test_an_offline_user_with_a_binary_sees_no_network_error(self):
+        """The common case, and it must be invisible.
+
+        Someone who installed the plugin once and then works on a train still
+        has a working validator. The hourly check fails, is recorded, and says
+        nothing — a validator that complains about the network while happily
+        validating would be reporting its own plumbing.
+        """
+        self._fake(remote=self.SHA_B, check_raises=OSError("no network"))
+        bk = FakeBk({"last_update_check": None, "installed_sha256": self.SHA_A})
+        path, note = plugin._ensure_binary(bk)
+        self.assertIsNotNone(path)
+        self.assertIsNone(note)
+
+    def test_a_first_install_without_a_network_says_something_usable(self):
+        """The uncommon case, where an error IS right: with no binary there is
+        nothing to validate with. But the raw exception is developer text."""
+        message = plugin._install_failure(
+            OSError("<urlopen error [Errno 8] nodename nor servname provided>"))
+        self.assertIn("needs an internet connection", message)
+        self.assertIn("works offline", message)
+        self.assertNotIn("Errno 8", message.split("(")[0])   # detail, not lede
+
+        # Our own DownloadError messages are already written for a reader and
+        # must pass through rather than be relabelled as a network problem.
+        own = bin_mod.DownloadError("no epubveri build for this platform")
+        self.assertEqual(plugin._install_failure(own),
+                         "epubveri could not be installed: "
+                         "no epubveri build for this platform")
+
     def test_an_unreadable_timestamp_is_treated_as_never_checked(self):
         self._fake(remote=self.SHA_B)
         plugin._ensure_binary(FakeBk({"last_update_check": "not a date",

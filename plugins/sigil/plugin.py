@@ -114,6 +114,25 @@ _UPDATE_INTERVAL = timedelta(hours=1)
 _CHECK_TIMEOUT = 5
 
 
+def _install_failure(exc):
+    """A sentence a Sigil user can act on.
+
+    The raw exception is developer text — "<urlopen error [Errno 8] nodename
+    nor servname provided, or not known>" tells someone validating a book
+    nothing they can do. Our own `DownloadError` messages are already written
+    for a reader (no build for this platform, checksum mismatch), so those pass
+    through; anything else is treated as the network, which is what it almost
+    always is.
+
+    The detail stays, in parentheses, for whoever does want it.
+    """
+    if isinstance(exc, bin_mod.DownloadError):
+        return "epubveri could not be installed: %s" % exc
+    return ("epubveri could not be downloaded. The first run needs an "
+            "internet connection; after that the plugin works offline. (%s)"
+            % exc)
+
+
 def _ensure_binary(bk):
     """The epubveri binary to use, installing or updating it as needed.
 
@@ -295,8 +314,7 @@ def run(bk):
     try:
         binary, update_note = _ensure_binary(bk)
     except Exception as exc:                           # noqa: BLE001
-        bk.add_result("error", "", -1, _xml_attr(
-            "epubveri could not be installed: %s" % exc))
+        bk.add_result("error", "", -1, _xml_attr(_install_failure(exc)))
         return -1
 
     tmpdir = tempfile.mkdtemp(prefix="epubveri-sigil-")

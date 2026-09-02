@@ -77,6 +77,15 @@ everything and judge for yourself.
 
 ## If something goes wrong
 
+- **Working offline?** Once the binary is installed the plugin never needs the
+  network again. The hourly update check fails silently and the copy you have
+  is used — no error, no missing findings. The one exception is a connection
+  that accepts and then goes nowhere (a captive portal, a firewall that drops
+  rather than refuses): that costs five seconds, once an hour, before the check
+  gives up.
+- **The first run does need the network**, because there is no binary yet. If
+  it cannot download one it says so and validates nothing — there is nothing to
+  validate with.
 - **"epubveri could not be installed"** — the download or its checksum failed.
   The message says which. A checksum failure means nothing was installed.
 - **No epubveri build for this platform** — the release covers Linux, macOS and
