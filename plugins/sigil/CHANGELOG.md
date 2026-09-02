@@ -9,6 +9,11 @@ First version. An independent implementation: Doitsu's plugin proved the idea
 and is what taught us what an editor integration needs, but none of its code is
 here.
 
+- `autostart` is on, so choosing the plugin runs it. Doitsu suggested it and
+  Sigil's source says why it matters: with it off the runner shows a dialog
+  whose only content is a Start button, and a validation asks nothing, so that
+  is a click for nothing. `autoclose` is deliberately left alone — `PluginRunner`
+  already accepts and closes for any plugin of type `validation`.
 - Validates the open book, including unsaved edits: the OPF Sigil currently
   holds is written into the temporary container rather than the one on disk.
 - Findings carry file, line and **character offset**, so Sigil can place the

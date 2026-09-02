@@ -4,7 +4,7 @@
 <type>validation</type>
 <author>Baris Kayadelen (veripublica)</author>
 <description>Validate the current book with epubveri, a fast JVM-free EPUB validator.</description>
-<autostart>false</autostart>
+<autostart>true</autostart>
 <engine>python3.4</engine>
 <version>0.1.0</version>
 <oslist>unx,win,osx</oslist>
