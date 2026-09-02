@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+/dist/
+# The plugin caches the epubveri binary next to itself at first run; it is
+# never committed and never packaged — see client/binary.py.
+epubveri
+epubveri.exe
+.DS_Store

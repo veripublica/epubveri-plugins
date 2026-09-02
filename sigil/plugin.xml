@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin>
+<name>epubveri</name>
+<type>validation</type>
+<author>veripublica</author>
+<description>Validate the current book with epubveri, a fast JVM-free EPUB validator.</description>
+<autostart>false</autostart>
+<engine>python3.4</engine>
+<version>0.1.0</version>
+<oslist>unx,win,osx</oslist>
+</plugin>
