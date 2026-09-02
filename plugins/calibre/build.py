@@ -14,7 +14,7 @@ the top level of the zip**, where Sigil wants a folder. `__init__.py` and
 `plugin-import-name-epubveri.txt` have to be at the root of the archive or
 calibre will not import the plugin at all.
 
-    python3 plugins/calibre/build.py    -> dist/calibre_epubveri_vX.Y.Z.zip
+    python3 plugins/calibre/build.py    -> dist/calibre/epubveri_vX.Y.Z.zip
 """
 
 import os

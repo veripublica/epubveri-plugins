@@ -11,18 +11,25 @@ The editing is the editor's; the verdict is epubveri's.
 
 | plugin | for | status |
 |---|---|---|
-| [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | working |
-| [`plugins/calibre`](plugins/calibre) | calibre's Edit Book | incomplete — see its README |
+| [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | **released — [0.1.0](https://github.com/veripublica/epubveri-plugins/releases/tag/sigil-v0.1.0)** |
+| [`plugins/calibre`](plugins/calibre) | calibre's Edit Book | **not released**, and not finished — see its README |
 
 **Each plugin has its own README, its own changelog and its own version.**
 Start there: this file is only about the repository.
 
 ## Installing
 
-Download the zip for your editor from
+Download the zip from
 [**Releases**](https://github.com/veripublica/epubveri-plugins/releases) — not
 from this source tree. Both editors install a plugin **from a zip file**, never
-from a folder. Each plugin's README has its own instructions.
+from a folder, so there is always a zip to fetch.
+
+Only the **Sigil** plugin is released so far;
+[its README](plugins/sigil/README.md) has the steps. Releases are tagged per
+plugin (`sigil-v0.1.0`), because the two are versioned independently.
+
+**Check what you downloaded** if you like: each release publishes a
+`SHA256SUMS.txt` beside the zip.
 
 On first use a plugin downloads the epubveri binary for your platform from
 epubveri's own releases and **verifies it against that release's

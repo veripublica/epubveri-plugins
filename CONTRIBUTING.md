@@ -55,7 +55,7 @@ display switches do what their names say.
 ## Building a package
 
 ```
-python3 plugins/sigil/build.py        # -> dist/sigil_epubveri_vX.Y.Z.zip
+python3 plugins/sigil/build.py        # -> dist/sigil/epubveri_vX.Y.Z.zip
 ```
 
 `dist/` is not committed. Release zips are built from a tag and published with

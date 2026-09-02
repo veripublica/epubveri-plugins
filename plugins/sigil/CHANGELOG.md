@@ -3,7 +3,7 @@
 This plugin is versioned independently of the calibre plugin and of epubveri
 itself. The version Sigil shows comes from `plugin.xml`.
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-09-03
 
 First version. An independent implementation: Doitsu's plugin proved the idea
 and is what taught us what an editor integration needs, but none of its code is

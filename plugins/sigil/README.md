@@ -20,16 +20,17 @@ who has used epubcheck.
 2. In Sigil: **Plugins → Manage Plugins → Add Plugin**, choose the zip.
 3. Run it from **Plugins → Validation → epubveri**.
 
-**The binary is verified every time, not only when it arrives.** Its checksum
-is recorded at install and checked before each run — 1.8 ms for 2.8 MB, under
-one percent of a validation. If the file has changed since it was verified the
-plugin says so and **runs nothing**, because verifying at download proves what
-arrived, not what runs.
-
 **On first use it downloads the epubveri binary** for your platform from
-epubveri's own releases, checks it against that release's `SHA256SUMS.txt`, and
-keeps it beside the plugin. Nothing else is installed, and the plugin zip
-contains no binary. Roughly 3 MB, once.
+epubveri's own releases and keeps it beside the plugin. A download of about
+1.1 MB, 2.8 MB on disk, once. Nothing else is installed, and the plugin zip
+contains no binary.
+
+**It is verified before every run, not only when it arrives.** The archive is
+checked against that release's `SHA256SUMS.txt` on the way in, and the
+binary's own checksum is recorded and compared each time it is about to be
+used — 1.8 ms for 2.8 MB, under one percent of a validation. If the file has
+changed since it was verified, the plugin says so and **runs nothing**:
+verifying at download proves what arrived, not what runs.
 
 **After that it keeps itself current.** At most once an hour it reads the
 release's `SHA256SUMS.txt` — 842 bytes — and compares one line against the hash
@@ -49,18 +50,27 @@ something untrue.
 
 ## What you will see
 
-Findings land in Sigil's validation panel with their file, line and column, so
-double-clicking one takes you to the character rather than the file.
+Findings land in Sigil's validation panel under **File**, **Line** and
+**Offset**. The offset is a position in the file rather than a column, which is
+what Sigil uses to put the cursor on the character rather than at the start of
+the line.
 
-The verdict is epubcheck's: **a book that passes epubcheck passes epubveri.**
-The last line of every run says which version validated the book, the verdict,
-and how many findings were hidden.
+The last line of every run is a summary: which version validated the book, the
+verdict, and — when there are any — how many usage notes and advisory findings
+are in the list above it, neither of which decides the verdict.
+
+```
+epubveri 0.13.3 — NOT VALID (2 error(s), 0 warning(s));
+also listed: 1 usage note(s), 1 advisory finding(s) epubcheck does not make
+             — neither affects the verdict
+```
 
 ## What is in the report, and what decides the verdict
 
-**Everything epubveri found is listed — there are no settings to find.** Sigil
-gives a plugin no configuration screen, so a preference would have been a
-switch you could not reach.
+**Everything epubveri found is listed, and nothing is filtered.** Sigil gives a
+plugin no configuration screen, so a switch controlling what you see would have
+been one you could not reach. (There is one setting, for automatic updates, and
+it lives in a file — see below. It changes nothing about the report.)
 
 Every line says what it is, and only two kinds decide the verdict:
 

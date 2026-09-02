@@ -77,7 +77,7 @@ class FakeBk(object):
     """The four container methods the plugin uses, and nothing else."""
 
     def __init__(self, prefs=None):
-        # Seeded so the daily update check is not due: these tests must not
+        # Seeded so the hourly update check is not due: these tests must not
         # touch the network, and a test that quietly does is a test that fails
         # on an aeroplane.
         self.prefs = {"last_update_check": datetime.utcnow().isoformat()}

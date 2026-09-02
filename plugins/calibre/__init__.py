@@ -38,8 +38,8 @@ class EpubVeriPlugin(EditBookToolPlugin):
 
     #: calibre offers what Sigil does not: a settings page, reached from
     #: Preferences / Plugins / Customize. So this plugin asks rather than
-    #: guessing, and the Sigil plugin's NO-UPDATES marker file exists only
-    #: because it has nowhere to ask.
+    #: guessing. The Sigil plugin has to put the same choice in its JSON
+    #: preferences file, because Sigil offers nowhere to ask.
     def config_widget(self):
         from calibre_plugins.epubveri.main import ConfigWidget
         return ConfigWidget()

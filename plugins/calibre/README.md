@@ -44,7 +44,8 @@ your copy is after a month without a check: that is an explanation for a
 finding that looks wrong, not a nag.
 
 Sigil has no settings screen for a plugin at all, so its half of this
-repository uses a `NO-UPDATES` marker file instead.
+repository writes the same setting into its JSON preferences file for the user
+to edit by hand — same key, `autoupdate`, same meaning.
 
 ## Licensing
 
