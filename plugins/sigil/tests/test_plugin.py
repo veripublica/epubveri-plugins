@@ -292,70 +292,53 @@ class RunTests(unittest.TestCase):
         self.assertEqual(creators[0][1], "OEBPS/content.opf")
         self.assertEqual(creators[0][0], "error")
 
-    def test_usage_is_hidden_by_default_and_shown_on_request(self):
-        quiet = FakeBk()
-        plugin.run(quiet)
-        loud = FakeBk({"show_usage": True})
-        plugin.run(loud)
-        self.assertGreater(len(loud.results), len(quiet.results),
-                           "-u should reveal the unused Misc/spare.xml note")
-        self.assertTrue(any("OPF-097" in r[4] for r in loud.results),
-                        [r[4] for r in loud.results])
-        self.assertFalse(any("OPF-097" in r[4] for r in quiet.results))
+    def test_every_finding_reaches_the_panel_and_is_labelled(self):
+        """No settings, so nothing is hidden — and nothing is ambiguous.
 
-    def test_every_result_from_a_real_run_survives_sigils_xml(self):
-        from xml.etree import ElementTree as ET
-        bk = FakeBk({"show_usage": True})
-        plugin.run(bk)
-        self.assertTrue(bk.results)
-        # The fixture carries `<p fake="x">` on purpose: epubveri answers by
-        # quoting the attribute name, which is the exact shape that ended the
-        # XML attribute early and made Sigil show nothing at all.
-        self.assertTrue(any('"fake"' in r[4] or "&quot;fake&quot;" in r[4]
-                            for r in bk.results),
-                        "the fixture no longer produces a quoted message, so "
-                        "this test would pass without any escaping at all")
-        for restype, bookpath, line, offset, message in bk.results:
-            doc = ResultXmlTests.LINE % (restype, bookpath, line, offset,
-                                         message)
-            ET.fromstring(doc)   # the whole point: Sigil must be able to read it
-
-    def test_advisory_is_off_by_default_but_the_summary_says_it_exists(self):
-        """Off by default, and **announced anyway**.
-
-        The family is opt-in on purpose: reporting something epubcheck is
-        silent about is indistinguishable from a false positive to anyone
-        comparing the two tools. But a switch nobody knows about is a feature
-        nobody has, so both flags are always *fetched* and the summary names
-        what it hid — a reader learns it exists because their own book has
-        something to show.
+        Sigil gives a plugin no configuration screen, so a preference would be
+        a switch the user cannot reach. Everything is shown instead, and every
+        line says what it is: an advisory is labelled ADVISORY and carries the
+        sentence that keeps it from reading as the two tools disagreeing.
         """
-        off = FakeBk()
-        plugin.run(off)
-        self.assertFalse(any("[advisory:" in r[4] for r in off.results),
-                         "advisory findings must not be shown unasked")
-        summary = off.results[-1][4]
-        self.assertIn("advisory finding", summary, summary)
-        self.assertIn("epubcheck does not make", summary, summary)
-        self.assertIn("usage note", summary, summary)
+        bk = FakeBk()
+        self.assertEqual(plugin.run(bk), 0)
+        texts = [r[4] for r in bk.results]
 
-        on = FakeBk({"advisory": True})
-        plugin.run(on)
-        self.assertTrue(any("ADV-001" in r[4] for r in on.results),
-                        [r[4] for r in on.results])
-        self.assertTrue(any("[advisory: spec-silent]" in r[4]
-                            for r in on.results))
-        # ...and once shown, it is no longer announced as hidden.
-        self.assertNotIn("advisory finding", on.results[-1][4])
+        # The unreferenced Misc/spare.xml: a usage note, previously hidden.
+        self.assertTrue(any("USAGE OPF-097" in t for t in texts), texts)
+        # The CSS typo: an advisory, previously hidden.
+        advisories = [t for t in texts if "ADVISORY ADV-001" in t]
+        self.assertEqual(len(advisories), 1, texts)
+        self.assertIn("epubcheck does not report this", advisories[0])
+        self.assertIn("the verdict is unaffected", advisories[0])
+        # An ordinary error keeps epubveri's own severity word.
+        self.assertTrue(any(t.startswith("ERROR RSC-005") for t in texts), texts)
 
-    def test_the_verdict_never_moves_with_the_advisory_switch(self):
-        """The promise the whole family rests on, checked at the plugin's own
-        boundary rather than trusted from the library."""
-        off, on = FakeBk(), FakeBk({"advisory": True})
-        plugin.run(off)
-        plugin.run(on)
-        verdict = lambda bk: "VALID" if "— VALID" in bk.results[-1][4] else "NOT VALID"
-        self.assertEqual(verdict(off), verdict(on))
+    def test_the_summary_separates_what_decides_the_verdict(self):
+        bk = FakeBk()
+        plugin.run(bk)
+        summary = bk.results[-1][4]
+        # Errors and warnings decide it; the rest is listed as not deciding it.
+        self.assertIn("2 error(s)", summary)
+        self.assertIn("1 usage note(s)", summary)
+        self.assertIn("1 advisory finding(s) epubcheck does not make", summary)
+        self.assertIn("neither affects the verdict", summary)
+        # Advisories are emitted at usage severity, so a naive count would
+        # report them twice.
+        self.assertNotIn("2 usage note(s)", summary)
+
+    def test_advisory_findings_never_move_the_verdict(self):
+        """The promise the family rests on, checked at the plugin's own
+        boundary rather than trusted from the library. The fixture is NOT
+        VALID for reasons that have nothing to do with the advisory, and the
+        advisory must not be among the counted errors."""
+        bk = FakeBk()
+        plugin.run(bk)
+        summary = bk.results[-1][4]
+        self.assertIn("NOT VALID", summary)
+        errors = [r for r in bk.results if r[0] == "error"]
+        self.assertFalse([r for r in errors if "ADVISORY" in r[4]],
+                         "an advisory was given Sigil's error type")
 
 
 if __name__ == "__main__":

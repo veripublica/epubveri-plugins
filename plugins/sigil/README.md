@@ -34,31 +34,30 @@ The verdict is epubcheck's: **a book that passes epubcheck passes epubveri.**
 The last line of every run says which version validated the book, the verdict,
 and how many findings were hidden.
 
-## The two switches
+## What is in the report, and what decides the verdict
 
-Both are off by default, matching epubveri's own command line and epubcheck's
-behaviour. Both are in the plugin's preferences, and every run tells you when
-something was hidden.
+**Everything epubveri found is listed — there are no settings to find.** Sigil
+gives a plugin no configuration screen, so a preference would have been a
+switch you could not reach.
 
-| | what it adds |
-|---|---|
-| **Show usage notes** | `usage`-severity findings — things worth knowing that are not defects, like an unreferenced image. epubcheck hides these too unless you pass `-u`. |
-| **Advisory checks** | `ADV-*` and `NEXT-*`: opinions epubcheck does not hold. `NEXT-*` becomes an ordinary error once epubcheck catches up with the specification; `ADV-*` is where no specification says anything but the book is still probably wrong. **Neither ever changes the verdict or the exit code.** |
+Every line says what it is, and only two kinds decide the verdict:
 
-Both are **off** because the report should look the way epubcheck's does until
-you ask for more — an extra finding that arrives unasked is indistinguishable
-from a wrong one to anyone comparing the two tools.
+| label | what it is | counts towards the verdict |
+|---|---|---|
+| `FATAL` / `ERROR` | the book breaks the specification | **yes** |
+| `WARNING` | epubcheck warns about it | **yes** |
+| `INFO` | epubcheck says it for information | no |
+| `USAGE` | worth knowing, not a defect — an unreferenced image, a `@font-face`. epubcheck reports these too, but only with `-u` | no |
+| `ADVISORY` | **epubcheck does not report this at all.** `NEXT-*` is something a published specification requires and epubcheck has not implemented yet; `ADV-*` is where no specification says anything but the book is still probably wrong | no |
 
-But the plugin runs epubveri with both on and filters at display, so it can
-tell you what it hid *about your book* rather than leaving you to find a
-checkbox:
+Every advisory line carries the sentence *"epubcheck does not report this; the
+verdict is unaffected"*, so it cannot be mistaken for the two tools
+disagreeing. On the command line these are opt-in (`-u`, `--advisory`), because
+a script diffing epubveri against epubcheck has to see the same report from
+both. A results panel is not a diff — it has a Type column — so here you get
+everything and judge for yourself.
 
-```
-epubveri 0.13.3 — NOT VALID (2 error(s), 0 warning(s));
-hidden: 1 usage note(s), 1 advisory finding(s) epubcheck does not make
-```
-
-Switching either on costs nothing — the book is not validated again.
+**A book that passes epubcheck passes epubveri**, with or without any of this.
 
 ## If something goes wrong
 

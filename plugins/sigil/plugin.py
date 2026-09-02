@@ -34,16 +34,20 @@ _SIGIL_TYPE = {
     "usage": "info",
 }
 
-# Defaults deliberately match epubveri's own CLI rather than overriding it:
-# `usage` hidden (as epubcheck hides it without `-u`) and `--advisory` off
-# (the family is opt-in by design and never moves the verdict). What the two
-# third-party plugins got wrong was not the default but that nothing told the
-# user a switch existed — so both live in prefs and both are named in the
-# summary line of every run.
-_DEFAULTS = {
-    "show_usage": False,
-    "advisory": False,
-}
+# **Every finding is shown, and there are no settings.** Sigil offers a plugin
+# no configuration screen — Manage Plugins lists name, version, author, type,
+# engine and platforms and nothing else — so a preference here would be a
+# switch the user cannot reach.
+#
+# That constraint pushed the right way. On the command line `usage` findings
+# and `--advisory` are off by default, because a script diffing epubveri
+# against epubcheck has to see the same report from both. A results panel is
+# not a diff: it has a Type column and every line here says what it is, so the
+# reader gets everything, labelled, and judges for themselves.
+#
+# What does **not** change is the verdict. `ADV-*`/`NEXT-*` never move
+# VALID/NOT VALID — epubveri's standing guarantee, measured across 444 books —
+# so a book that passes epubcheck still passes here.
 
 
 def _xml_attr(value):
@@ -74,11 +78,10 @@ def _xml_attr(value):
                  .replace('"', "&quot;"))
 
 
-def _prefs(bk):
-    prefs = bk.getPrefs()
-    for key, value in _DEFAULTS.items():
-        prefs.setdefault(key, value)
-    return prefs
+def _label(finding):
+    """The word in front of a finding, so that no line can be mistaken for
+    something epubcheck said."""
+    return "ADVISORY" if finding.is_advisory else finding.severity.upper()
 
 
 def _plugin_dir():
@@ -166,30 +169,17 @@ def _char_offset(workdir, location, line, column):
     return offsets[line - 1] + max((column or 1) - 1, 0)
 
 
-def _report(bk, envelope, workdir, prefs):
-    """Show what the preferences allow, and count what they hid.
-
-    Both categories are always *fetched* — see `client/runner.py`. Counting
-    them here is what lets the summary say "3 advisory findings hidden" rather
-    than leaving a checkbox to be discovered: a reader learns the feature
-    exists because their own book has something to show, which is the only
-    argument for it that is ever going to land.
-    """
+def _report(bk, envelope, workdir):
+    """Put every finding into Sigil's validation panel."""
     shown = 0
-    hidden = {"usage": 0, "advisory": 0}
     for finding in sorted(envelope.findings, key=lambda f: f.sort_key):
-        if finding.is_advisory and not prefs["advisory"]:
-            hidden["advisory"] += 1
-            continue
-        if finding.severity == "usage" and not finding.is_advisory \
-                and not prefs["show_usage"]:
-            hidden["usage"] += 1
-            continue
-
-        text = "%s %s: %s" % (finding.severity.upper(), finding.code,
-                              finding.message)
+        text = "%s %s: %s" % (_label(finding), finding.code, finding.message)
         if finding.is_advisory:
-            text += "  [advisory: %s]" % finding.advisory_basis
+            # Say plainly why this line is not in epubcheck's output.
+            # Without it an advisory reads as the two tools disagreeing,
+            # rather than as an extra opinion that moves no verdict.
+            text += "  [epubcheck does not report this; the verdict is " \
+                    "unaffected]"
 
         restype = _SIGIL_TYPE.get(finding.severity, "info")
         # `location` is a full container-relative path and Sigil wants exactly
@@ -205,14 +195,13 @@ def _report(bk, envelope, workdir, prefs):
             bk.add_extended_result(restype, _xml_attr(bookpath), line, offset,
                                    _xml_attr(text))
         shown += 1
-    return shown, hidden
+    return shown
 
 
 def run(bk):
     import shutil
     import tempfile
 
-    prefs = _prefs(bk)
     binary = _binary_path()
 
     if not os.path.isfile(binary):
@@ -227,11 +216,7 @@ def run(bk):
     try:
         epub_path, workdir = _build_epub(bk, tmpdir)
         try:
-            # Both switches are display-only: fetch everything, filter in
-            # `_report`. Passing the preference here instead would make the
-            # summary counts describe the switch rather than the book, and
-            # would need a second validation of the same file to change a
-            # display setting.
+            # `-u` and `--advisory` always; the panel shows everything.
             envelope = runner.run_epubveri(binary, epub_path)
         except EnvelopeError as exc:
             bk.add_result("error", "", -1, _xml_attr("epubveri: %s" % exc))
@@ -247,28 +232,32 @@ def run(bk):
                 % (envelope.error or "no reason given")))
             return -1
 
-        shown, hidden = _report(bk, envelope, workdir, prefs)
+        _report(bk, envelope, workdir)
         verdict = "VALID" if envelope.is_valid else "NOT VALID"
+        # The verdict line quotes only errors and fatals, because that is what
+        # decides it and what epubcheck would print. Usage notes and
+        # advisories are in the panel above and count towards neither.
         summary = "epubveri %s — %s (%d error(s), %d warning(s))" % (
             envelope.version, verdict,
             envelope.count("error") + envelope.count("fatal"),
             envelope.count("warning"))
-        # Name the two categories separately. "12 hidden" tells a reader
-        # nothing about which switch to reach for, and the advisory half is
-        # the one they have no reason to suspect exists.
-        notes = []
-        if hidden["usage"]:
-            notes.append("%d usage note(s)" % hidden["usage"])
-        if hidden["advisory"]:
-            notes.append("%d advisory finding(s) epubcheck does not make"
-                         % hidden["advisory"])
-        if notes:
-            summary += "; hidden: %s — turn them on in Plugins > Manage " \
-                       "Plugins > epubveri" % ", ".join(notes)
+        advisory = sum(1 for f in envelope.findings if f.is_advisory)
+        # `ADV-*`/`NEXT-*` are emitted AT usage severity, so the envelope's
+        # usage count already contains them; subtract or they are counted
+        # twice.
+        usage = envelope.count("usage") - advisory
+        extra = []
+        if usage > 0:
+            extra.append("%d usage note(s)" % usage)
+        if advisory:
+            extra.append("%d advisory finding(s) epubcheck does not make"
+                         % advisory)
+        if extra:
+            summary += "; also listed: %s — neither affects the verdict" \
+                       % ", ".join(extra)
         bk.add_result("info", "", -1, _xml_attr(summary))
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
-        bk.savePrefs(prefs)
     return 0
 
 

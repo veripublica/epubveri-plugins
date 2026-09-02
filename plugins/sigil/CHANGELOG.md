@@ -19,14 +19,12 @@ here.
 - The binary is downloaded on first use and **verified against the release's
   `SHA256SUMS.txt`**. epubveri has published that file since 0.12.4 and nothing
   had been checking it.
-- Usage notes and advisory checks are preferences, **off by default but
-  announced**: epubveri is run with both on and the filtering happens at
-  display, so the summary can name what it hid — "1 usage note(s), 1 advisory
-  finding(s) epubcheck does not make" — instead of leaving a checkbox to be
-  discovered. Switching either on does not re-validate the book. Off is the
-  right default (an unasked-for finding reads as a wrong one to anyone
-  comparing the two tools), but a switch nobody knows about is a feature
-  nobody has.
+- **Every finding is listed and there are no settings.** Sigil offers a plugin
+  no configuration screen, so a preference would have been a switch the user
+  could not reach. Each line is labelled instead — `ERROR`, `WARNING`, `USAGE`,
+  `ADVISORY` — and every advisory carries "epubcheck does not report this; the
+  verdict is unaffected". Only errors, fatals and warnings decide VALID/NOT
+  VALID, exactly as in epubcheck.
 - Every network call has a timeout, so a hung connection cannot freeze Sigil.
 - **Findings are escaped for Sigil's result XML.** Sigil builds that document
   by raw interpolation and escapes only some of its own strings, so a message
