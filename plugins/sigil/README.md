@@ -12,8 +12,11 @@ who has used epubcheck.
 
 ## Installing
 
-1. Download `sigil_epubveri_vX.Y.Z.zip` from
+1. Download `epubveri_vX.Y.Z.zip` from
    [Releases](https://github.com/veripublica/epubveri-plugins/releases).
+   **Do not rename it.** Sigil takes the folder name from the part of the
+   filename before the first underscore, and refuses the plugin if it does not
+   match what is inside.
 2. In Sigil: **Plugins → Manage Plugins → Add Plugin**, choose the zip.
 3. Run it from **Plugins → Validation → epubveri**.
 

@@ -25,7 +25,9 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-DIST = os.path.join(ROOT, "dist")
+#: Per-plugin, so the two archives cannot collide: both want to be called
+#: `epubveri`, and Sigil's name is part of its install contract.
+DIST = os.path.join(ROOT, "dist", "calibre")
 
 #: calibre reads the version off the plugin class, so that is where it lives.
 VERSION_RE = re.compile(r"PLUGIN_VERSION_TUPLE\s*=\s*\(([^)]*)\)")
@@ -35,7 +37,8 @@ EXCLUDE = shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "build.py",
 
 
 def version():
-    text = open(os.path.join(HERE, "__init__.py"), encoding="utf-8").read()
+    with open(os.path.join(HERE, "__init__.py"), encoding="utf-8") as handle:
+        text = handle.read()
     match = VERSION_RE.search(text)
     if not match:
         raise SystemExit("__init__.py has no PLUGIN_VERSION_TUPLE")
@@ -44,13 +47,15 @@ def version():
 
 
 def build():
-    staging = os.path.join(DIST, "calibre-staging")
+    staging = os.path.join(DIST, ".staging")
     shutil.rmtree(staging, ignore_errors=True)
     shutil.copytree(HERE, staging, ignore=EXCLUDE)
     shutil.copy2(os.path.join(ROOT, "LICENSE"), staging)
 
     os.makedirs(DIST, exist_ok=True)
-    out = os.path.join(DIST, "calibre_epubveri_v%s.zip" % version())
+    # calibre reads the plugin name from the class and the import-name marker,
+    # so unlike Sigil the archive name carries no meaning.
+    out = os.path.join(DIST, "epubveri_v%s.zip" % version())
     if os.path.exists(out):
         os.remove(out)
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:

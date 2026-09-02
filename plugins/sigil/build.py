@@ -19,7 +19,21 @@ Sigil installs from a zip and never from a folder — its dialog is titled
 "Select Plugin Zip Archive" and filters on `Plugin Files (*.zip)` — which is
 why this step exists.
 
-    python3 plugins/sigil/build.py            -> dist/sigil_epubveri_vX.Y.Z.zip
+**The zip's filename decides the folder name inside it, and a mismatch is
+rejected outright** with "Error: Plugin not a valid Sigil plugin". From
+`PluginDB::add_plugin` in Sigil's own source:
+
+    QString name = zipinfo.baseName();       // "epubveri_v0.1.0"
+    int version_index = name.indexOf("_");   // everything after the FIRST "_"
+    name.truncate(version_index);            // ...is version, so name = "epubveri"
+
+and then `verify_plugin_zip` requires *every* entry in the archive to begin
+`epubveri/`, and `epubveri/plugin.xml` to be among them. So the archive must be
+`<plugin folder name>_<anything>.zip`. Naming it `sigil_epubveri_v0.1.0.zip`
+made Sigil look for a folder called `sigil` and refuse the plugin; the tests
+now pin the rule.
+
+    python3 plugins/sigil/build.py       -> dist/sigil/epubveri_vX.Y.Z.zip
 """
 
 import os
@@ -30,7 +44,14 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-DIST = os.path.join(ROOT, "dist")
+#: Per-plugin, because the zip's *name* is part of Sigil's contract and both
+#: plugins want to be called `epubveri`.
+DIST = os.path.join(ROOT, "dist", "sigil")
+
+#: The folder Sigil will create under its plugins directory. It must equal the
+#: zip's basename up to the first underscore, and it is what the user sees in
+#: Manage Plugins.
+FOLDER = "epubveri"
 
 #: Sigil reads the version from plugin.xml, so that is where it lives. A
 #: version file of our own would be a second place that could disagree.
@@ -42,7 +63,8 @@ EXCLUDE = shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "build.py",
 
 
 def version():
-    text = open(os.path.join(HERE, "plugin.xml"), encoding="utf-8").read()
+    with open(os.path.join(HERE, "plugin.xml"), encoding="utf-8") as handle:
+        text = handle.read()
     match = VERSION_RE.search(text)
     if not match:
         raise SystemExit("plugin.xml has no <version>")
@@ -50,14 +72,16 @@ def version():
 
 
 def build():
-    staging = os.path.join(DIST, "sigil-staging")
+    staging = os.path.join(DIST, ".staging")
     shutil.rmtree(staging, ignore_errors=True)
     shutil.copytree(HERE, staging, ignore=EXCLUDE)
     # GPL-3 §4: the licence travels with the thing that is conveyed.
     shutil.copy2(os.path.join(ROOT, "LICENSE"), staging)
 
     os.makedirs(DIST, exist_ok=True)
-    out = os.path.join(DIST, "sigil_epubveri_v%s.zip" % version())
+    # `<folder>_<version>.zip`: Sigil truncates at the first underscore to get
+    # the folder name, so the prefix is not decoration.
+    out = os.path.join(DIST, "%s_v%s.zip" % (FOLDER, version()))
     if os.path.exists(out):
         os.remove(out)
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -65,8 +89,9 @@ def build():
             for name in sorted(files):
                 full = os.path.join(dirpath, name)
                 rel = os.path.relpath(full, staging).replace(os.sep, "/")
-                # Sigil expects one top-level folder, named for the plugin.
-                zf.write(full, "epubveri/%s" % rel)
+                # Every entry must sit under that one folder, or
+                # verify_plugin_zip rejects the archive.
+                zf.write(full, "%s/%s" % (FOLDER, rel))
     shutil.rmtree(staging, ignore_errors=True)
     return out
 

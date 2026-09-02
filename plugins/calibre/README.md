@@ -23,7 +23,7 @@ and neither can break the other.
 
 ## Installing (once there is a release)
 
-1. Download `calibre_epubveri_vX.Y.Z.zip` from
+1. Download `epubveri_vX.Y.Z.zip` from
    [Releases](https://github.com/veripublica/epubveri-plugins/releases).
 2. **Preferences → Plugins → Load plugin from file**, choose the zip.
 3. Restart calibre. The tool appears in the Edit Book toolbar and Plugins menu.

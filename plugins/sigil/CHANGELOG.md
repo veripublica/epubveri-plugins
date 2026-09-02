@@ -19,3 +19,7 @@ here.
 - Usage notes and advisory checks are preferences, off by default; every run's
   summary says how many findings were hidden and where to turn them on.
 - Every network call has a timeout, so a hung connection cannot freeze Sigil.
+- The archive is `epubveri_vX.Y.Z.zip`, and the name is not decoration: Sigil
+  derives the plugin folder from the filename up to the first underscore and
+  rejects the archive if the folder inside does not match. A test now checks
+  the whole contract against Sigil's own rule.

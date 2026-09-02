@@ -132,6 +132,50 @@ class BuildEpubTests(unittest.TestCase):
         self.assertEqual(offsets[:4], [0, 4, 9, 11])
 
 
+class PackageTests(unittest.TestCase):
+    """The zip's *name* is part of Sigil's install contract, and getting it
+    wrong is rejected outright with "Error: Plugin not a valid Sigil plugin"
+    before a line of the plugin ever runs.
+
+    `PluginDB::add_plugin` takes the zip's basename, truncates it at the
+    **first** underscore, and requires every entry in the archive to sit under
+    a folder of exactly that name, with `<name>/plugin.xml` among them. The
+    first build named the archive `sigil_epubveri_v0.1.0.zip`, so Sigil looked
+    for a folder called `sigil` and refused it. Nothing but installing it in
+    Sigil could have caught that, which is why the rule is pinned here.
+    """
+
+    def test_the_archive_satisfies_sigils_install_contract(self):
+        import zipfile as zf_mod
+        sys.path.insert(0, PLUGIN_DIR)
+        import build
+
+        path = build.build()
+        try:
+            # Sigil's own derivation of the expected folder name.
+            basename = os.path.splitext(os.path.basename(path))[0]
+            expected = basename.split("_")[0]
+            self.assertEqual(expected, build.FOLDER)
+
+            with zf_mod.ZipFile(path) as zf:
+                names = zf.namelist()
+            self.assertTrue(names)
+            for name in names:
+                self.assertEqual(
+                    name.split("/")[0], expected,
+                    "%s is not under %s/, so verify_plugin_zip would reject "
+                    "the archive" % (name, expected))
+            self.assertIn("%s/plugin.xml" % expected, names)
+            # And the things a user should get, but never the cached binary.
+            self.assertIn("%s/README.md" % expected, names)
+            self.assertIn("%s/LICENSE" % expected, names)
+            self.assertFalse([n for n in names if n.endswith("/epubveri")])
+            self.assertFalse([n for n in names if "/tests/" in n])
+        finally:
+            import shutil
+            shutil.rmtree(os.path.dirname(path), ignore_errors=True)
+
+
 class RunTests(unittest.TestCase):
     def setUp(self):
         if _binary() is None:
