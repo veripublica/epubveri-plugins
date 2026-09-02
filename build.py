@@ -36,20 +36,37 @@ DIST = os.path.join(ROOT, "dist")
 #: nothing else in this file knows anything about a particular plugin.
 PACKAGES = {
     "sigil": "sigil",
+    "calibre": "calibre",
 }
 
 
 def _plugin_version(srcdir):
-    """Read the version out of the editor's own manifest, so there is exactly
-    one place to bump it and it is the place the editor reads."""
+    """The version, read from wherever the editor itself reads it.
+
+    There is deliberately no version file of our own: Sigil takes it from
+    `plugin.xml` and calibre from the `version` tuple on the plugin class, so
+    those are the two places, and a third would be one that could disagree.
+    """
+    import re
+
     manifest = os.path.join(srcdir, "plugin.xml")
     if os.path.isfile(manifest):
-        import re
         text = open(manifest, encoding="utf-8").read()
         match = re.search(r"<version>([^<]+)</version>", text)
         if match:
             return match.group(1).strip()
-    return "0.0.0"
+
+    init = os.path.join(srcdir, "__init__.py")
+    if os.path.isfile(init):
+        text = open(init, encoding="utf-8").read()
+        match = re.search(r"PLUGIN_VERSION_TUPLE\s*=\s*\(([^)]*)\)", text)
+        if match:
+            parts = [p.strip() for p in match.group(1).split(",") if p.strip()]
+            if parts:
+                return ".".join(parts)
+
+    raise SystemExit("%s: no plugin.xml and no PLUGIN_VERSION_TUPLE — the "
+                     "build refuses to guess a version" % srcdir)
 
 
 def build(name):
@@ -79,7 +96,12 @@ def build(name):
                 rel = os.path.relpath(full, staging).replace(os.sep, "/")
                 # Sigil installs a plugin from a zip whose top level is the
                 # plugin folder itself.
-                zf.write(full, "%s/%s" % ("epubveri", rel))
+                # Sigil expects the plugin folder at the top level of the
+                # zip; calibre expects the files themselves. Getting this
+                # wrong is not a subtle failure - the editor simply refuses
+                # to install it.
+                arcname = rel if name == "calibre" else "epubveri/%s" % rel
+                zf.write(full, arcname)
     shutil.rmtree(staging, ignore_errors=True)
     return out
 

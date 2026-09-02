@@ -4,10 +4,19 @@ Editor plugins for [**epubveri**](https://github.com/veripublica/epubveri) — a
 pure-Rust, JVM-free EPUB validator. They put epubveri inside the editor you
 already use, so validating a book is a menu item rather than a terminal.
 
-| | |
-|---|---|
-| `sigil/` | the plugin for [Sigil](https://sigil-ebook.com/) — everything it needs |
-| `build.py` | packages a plugin folder into an installable zip, into `dist/` |
+```
+epubveri-plugins/
+  LICENSE
+  README.md
+  build.py                     packages a plugin folder into an installable zip
+  sigil/                       the plugin for Sigil — everything it needs
+    plugin.py  plugin.xml
+    client/                      talking to the epubveri binary
+    tests/
+  calibre/                     the plugin for calibre's editor
+    main.py  __init__.py  plugin-import-name-epubveri.txt
+    client/                      its own copy, not shared with sigil/
+```
 
 **Each plugin is self-contained, and stays that way even when two of them are
 written in the same language.** They are applications for different programs
@@ -33,6 +42,8 @@ same.
 
 - **Sigil** — *Plugins → Manage Plugins → Add Plugin*, pick the zip. The
   plugin then appears under *Plugins → Validation → epubveri*.
+- **calibre** — *Preferences → Plugins → Load plugin from file*, pick the zip,
+  then restart calibre. It appears in the editor's Plugins menu and toolbar.
 - On first use it downloads the epubveri binary for your platform from
   epubveri's own releases and verifies it against that release's
   `SHA256SUMS.txt`. Nothing else is installed, and no binary is inside the
