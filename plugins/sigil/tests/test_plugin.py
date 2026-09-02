@@ -49,7 +49,7 @@ NAV = ('<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1
        '<nav epub:type="toc"><ol><li><a href="Text/ch1.xhtml">Ch1</a></li></ol></nav>'
        '</body></html>')
 CH1 = ('<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml">'
-       '<head><title>t</title></head><body><p>x</p></body></html>')
+       '<head><title>t</title></head><body><p fake="x">x</p></body></html>')
 CONTAINER = ('<?xml version="1.0"?>\n<container version="1.0" '
              'xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles>'
              '<rootfile full-path="OEBPS/content.opf" '
@@ -132,6 +132,56 @@ class BuildEpubTests(unittest.TestCase):
         self.assertEqual(offsets[:4], [0, 4, 9, 11])
 
 
+class ResultXmlTests(unittest.TestCase):
+    """Everything we hand Sigil ends up inside a double-quoted XML attribute,
+    built by raw interpolation in its launcher with no escaping:
+
+        '<validationresult type="%s" bookpath="%s" linenumber="%s"
+          charoffset="%s" message="%s" />'
+
+    So one unescaped `"` in a message ends the attribute and Sigil answers
+    "Error Parsing Result XML" — with **no findings shown at all**, which is
+    how this was found: a book with 257 findings displayed none of them.
+
+    These tests rebuild that exact line and parse it, so they fail the way
+    Sigil failed rather than on a rule of our own invention.
+    """
+
+    LINE = ('<validationresult type="%s" bookpath="%s" linenumber="%s" '
+            'charoffset="%s" message="%s" />')
+
+    def _roundtrip(self, message, bookpath="OEBPS/x.xhtml"):
+        from xml.etree import ElementTree as ET
+        doc = self.LINE % ("error", plugin._xml_attr(bookpath), "1", "0",
+                           plugin._xml_attr(message))
+        node = ET.fromstring(doc)          # raises if we broke the document
+        return node.get("message"), node.get("bookpath")
+
+    def test_a_quoted_element_name_survives(self):
+        # The commonest shape epubveri produces, and the one that broke it.
+        message = 'attribute "name" not allowed here'
+        got, _ = self._roundtrip(message)
+        self.assertEqual(got, message)
+
+    def test_ampersands_and_angle_brackets_survive(self):
+        for message in ('a bare & is not a character reference',
+                        'element <p> is not allowed here',
+                        'value "a<b&c>d" is invalid',
+                        "file name 'x' contains a space"):
+            got, _ = self._roundtrip(message)
+            self.assertEqual(got, message, message)
+
+    def test_a_path_with_an_ampersand_survives(self):
+        _, path = self._roundtrip("x", bookpath="OEBPS/Text/a&b.xhtml")
+        self.assertEqual(path, "OEBPS/Text/a&b.xhtml")
+
+    def test_single_quotes_are_left_alone(self):
+        # Legal inside a double-quoted attribute, and epubveri uses them far
+        # more often than double quotes — escaping them would be noise.
+        self.assertEqual(plugin._xml_attr("file 'x' is odd"),
+                         "file 'x' is odd")
+
+
 class PackageTests(unittest.TestCase):
     """The zip's *name* is part of Sigil's install contract, and getting it
     wrong is rejected outright with "Error: Plugin not a valid Sigil plugin"
@@ -212,6 +262,23 @@ class RunTests(unittest.TestCase):
         self.assertTrue(any("OPF-097" in r[4] for r in loud.results),
                         [r[4] for r in loud.results])
         self.assertFalse(any("OPF-097" in r[4] for r in quiet.results))
+
+    def test_every_result_from_a_real_run_survives_sigils_xml(self):
+        from xml.etree import ElementTree as ET
+        bk = FakeBk({"show_usage": True})
+        plugin.run(bk)
+        self.assertTrue(bk.results)
+        # The fixture carries `<p fake="x">` on purpose: epubveri answers by
+        # quoting the attribute name, which is the exact shape that ended the
+        # XML attribute early and made Sigil show nothing at all.
+        self.assertTrue(any('"fake"' in r[4] or "&quot;fake&quot;" in r[4]
+                            for r in bk.results),
+                        "the fixture no longer produces a quoted message, so "
+                        "this test would pass without any escaping at all")
+        for restype, bookpath, line, offset, message in bk.results:
+            doc = ResultXmlTests.LINE % (restype, bookpath, line, offset,
+                                         message)
+            ET.fromstring(doc)   # the whole point: Sigil must be able to read it
 
     def test_advisory_is_off_by_default(self):
         off = FakeBk()

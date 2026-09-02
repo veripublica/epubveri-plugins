@@ -19,6 +19,12 @@ here.
 - Usage notes and advisory checks are preferences, off by default; every run's
   summary says how many findings were hidden and where to turn them on.
 - Every network call has a timeout, so a hung connection cannot freeze Sigil.
+- **Findings are escaped for Sigil's result XML.** Sigil builds that document
+  by raw interpolation and escapes only some of its own strings, so a message
+  containing a double quote ended the attribute and Sigil answered "Error
+  Parsing Result XML" — showing *nothing at all*, on a book with 257 findings.
+  epubveri quotes element and attribute names the way epubcheck does, so this
+  affected 39 of those 257.
 - The archive is `epubveri_vX.Y.Z.zip`, and the name is not decoration: Sigil
   derives the plugin folder from the filename up to the first underscore and
   rejects the archive if the folder inside does not match. A test now checks

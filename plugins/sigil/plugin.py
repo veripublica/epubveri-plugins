@@ -46,6 +46,34 @@ _DEFAULTS = {
 }
 
 
+def _xml_attr(value):
+    """Escape a string for a double-quoted XML attribute.
+
+    **Sigil does not do this for us, and the omission is not obvious.** Its
+    launcher builds the results document by raw interpolation:
+
+        '<validationresult type="%s" bookpath="%s" ... message="%s" />'
+            % (vres.restype, vres.bookpath, ..., vres.message)
+
+    The same file has an `escapeit()` helper and uses it for the plugin's
+    success message and error log, but not for this line. So a message
+    containing a double quote closes the attribute early and Sigil answers
+    "Error Parsing Result XML" — with no finding shown at all, and nothing to
+    say which of them did it.
+
+    epubveri's messages are full of them: it quotes element and attribute
+    names the way epubcheck does. On one real book, 39 of 257 findings carried
+    a `"`.
+
+    Single quotes are left alone: they are legal inside a double-quoted
+    attribute, and 247 of those 257 messages contain one.
+    """
+    return (value.replace("&", "&amp;")
+                 .replace("<", "&lt;")
+                 .replace(">", "&gt;")
+                 .replace('"', "&quot;"))
+
+
 def _prefs(bk):
     prefs = bk.getPrefs()
     for key, value in _DEFAULTS.items():
@@ -150,9 +178,10 @@ def _report(bk, envelope, workdir, prefs):
         offset = _char_offset(workdir, finding.location,
                               finding.line, finding.column)
         if offset is None:
-            bk.add_result(restype, bookpath, line, text)
+            bk.add_result(restype, _xml_attr(bookpath), line, _xml_attr(text))
         else:
-            bk.add_extended_result(restype, bookpath, line, offset, text)
+            bk.add_extended_result(restype, _xml_attr(bookpath), line, offset,
+                                   _xml_attr(text))
         shown += 1
     return shown
 
@@ -168,8 +197,8 @@ def run(bk):
         try:
             binary = bin_mod.download_binary(_plugin_dir())
         except Exception as exc:                       # noqa: BLE001
-            bk.add_result("error", "", -1,
-                          "epubveri could not be installed: %s" % exc)
+            bk.add_result("error", "", -1, _xml_attr(
+                "epubveri could not be installed: %s" % exc))
             return -1
 
     tmpdir = tempfile.mkdtemp(prefix="epubveri-sigil-")
@@ -179,16 +208,17 @@ def run(bk):
             envelope = runner.run_epubveri(
                 binary, epub_path, advisory=prefs["advisory"])
         except EnvelopeError as exc:
-            bk.add_result("error", "", -1, "epubveri: %s" % exc)
+            bk.add_result("error", "", -1, _xml_attr("epubveri: %s" % exc))
             return -1
         except Exception as exc:                       # noqa: BLE001
-            bk.add_result("error", "", -1, "epubveri failed to run: %s" % exc)
+            bk.add_result("error", "", -1,
+                          _xml_attr("epubveri failed to run: %s" % exc))
             return -1
 
         if envelope.could_not_read:
-            bk.add_result("error", "", -1,
-                          "epubveri could not read the book: %s"
-                          % (envelope.error or "no reason given"))
+            bk.add_result("error", "", -1, _xml_attr(
+                "epubveri could not read the book: %s"
+                % (envelope.error or "no reason given")))
             return -1
 
         shown = _report(bk, envelope, workdir, prefs)
@@ -201,7 +231,7 @@ def run(bk):
         if hidden:
             summary += "; %d hidden — see the plugin's preferences for " \
                        "usage notes and advisory checks" % hidden
-        bk.add_result("info", "", -1, summary)
+        bk.add_result("info", "", -1, _xml_attr(summary))
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
         bk.savePrefs(prefs)
