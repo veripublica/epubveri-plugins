@@ -36,7 +36,7 @@ from client.envelope import EnvelopeError
 #: calibre's own store, so the settings live where a calibre user expects them
 #: and survive a plugin upgrade.
 prefs = JSONConfig('plugins/epubveri')
-prefs.defaults['check_for_updates'] = True
+prefs.defaults['update'] = 'yes'
 
 
 class ConfigWidget(QWidget):
@@ -59,7 +59,8 @@ class ConfigWidget(QWidget):
         layout = QVBoxLayout(self)
         self.check_updates = QCheckBox(
             'Keep epubveri up to date automatically', self)
-        self.check_updates.setChecked(bool(prefs['check_for_updates']))
+        self.check_updates.setChecked(
+            str(prefs['update']).strip().lower() in ('yes', 'true', 'on', '1', 'y'))
         self.check_updates.setToolTip(
             'Reads 842 bytes of checksums at most once an hour and installs a '
             'newer epubveri if there is one, verifying it first.\n'
@@ -74,7 +75,9 @@ class ConfigWidget(QWidget):
         layout.addStretch()
 
     def save_settings(self):
-        prefs['check_for_updates'] = self.check_updates.isChecked()
+        # The same key and the same vocabulary as the Sigil plugin, so the
+        # two never disagree about what the setting is called.
+        prefs['update'] = 'yes' if self.check_updates.isChecked() else 'no'
 
 
 class EpubVeriTool(Tool):

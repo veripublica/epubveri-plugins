@@ -84,11 +84,23 @@ everything and judge for yourself.
   cost is a connection that accepts and then goes nowhere (a captive portal, a
   firewall that drops rather than refuses), which spends five seconds once an
   hour before giving up.
-- **Do not want it touching the network at all?** Put an empty file named
-  `NO-UPDATES` in the plugin's folder (*Plugins / Manage Plugins* shows where
-  that is). Nothing is then requested, ever, and nothing is said about it. The
-  calibre plugin has a checkbox for the same thing; Sigil has no settings
-  screen for a plugin, so this is the equivalent.
+- **Do not want it touching the network at all?** Sigil gives a plugin no
+  settings screen, so this one lives in a file. Open
+
+  ```
+  <Sigil preferences>/plugins_prefs/epubveri/epubveri.json
+  ```
+
+  and change the line the plugin writes there on its first run:
+
+  ```json
+  "update": "yes"      ->      "update": "no"
+  ```
+
+  Nothing is then requested, ever, and nothing is said about it. Anything that
+  is not clearly a yes — `no`, `off`, `0`, `false`, or a typo — is read as no,
+  because the one thing this switch must never do is use your connection when
+  you asked it not to. (The calibre plugin has a checkbox for the same setting.)
 - **After a month offline** the summary adds one line: *"this epubveri is 45
   days old and could not be checked for updates"*. Not an error and not a
   warning — the validator works. It is there because a copy that old may

@@ -121,27 +121,46 @@ _STALE_AFTER = timedelta(days=30)
 _CHECK_TIMEOUT = 5
 
 
-#: A file of this name beside the plugin turns every network call off.
+#: The preference key, and it is **written into the file with its default** on
+#: the first run rather than only being read.
 #:
-#: Sigil gives a plugin no settings screen, so this is the escape hatch for
-#: someone who does not want a tool touching their connection — a metered link,
-#: an air-gapped machine, or simple preference. It is a file rather than a
-#: preference key because a file is something a person can create without
-#: knowing what JSON is, and because "the plugin folder contains NO-UPDATES" is
-#: a state you can see. The preference key is honoured too, for whoever prefers
-#: it and for the calibre plugin, which does have a checkbox.
+#: Sigil gives a plugin no settings screen, so the JSON at
+#: `plugins_prefs/epubveri/epubveri.json` is the only place to change this. A
+#: key that is merely *honoured* would be invisible there — someone opening the
+#: file would see no sign that the choice exists. Writing it means the file
+#: documents itself.
 #:
-#: **What it turns off is the network, not the report.** Someone who sets it is
-#: saying "do not use my connection", not "keep me on an old validator" — so
-#: the age line below still appears, because that is an explanation for a
-#: finding that looks wrong rather than a nag to update.
-_NO_UPDATE_MARKER = "NO-UPDATES"
+#: **What it governs is the network, not the version.** Someone who sets it to
+#: "no" is saying "do not use my connection" — a metered link, an air-gapped
+#: machine, or preference — not "keep me on an old validator", which nobody
+#: wants from a tool whose releases are mostly fixes for wrong errors. So the
+#: age line below still appears.
+_UPDATE_KEY = "update"
+_UPDATE_DEFAULT = "yes"
+
+#: The values that mean yes. **Everything else means no**, and the direction
+#: matters more than the list.
+#:
+#: This is a value typed by hand into a text file, so it will not always be one
+#: of ours: `no`, `hayır`, `nein`, `off`, or a typo. Listing what counts as
+#: *off* would treat every one of those as consent and keep using someone's
+#: connection against their wishes — the worst thing this switch can do.
+#: Listing what counts as *on* fails the other way: an unrecognised value stops
+#: the network, which is recoverable, visible in the report after a month, and
+#: never worse than the user asked for.
+_ON_VALUES = frozenset(["yes", "true", "on", "1", "y"])
 
 
-def _updates_allowed(prefs):
-    if os.path.exists(os.path.join(_plugin_dir(), _NO_UPDATE_MARKER)):
-        return False
-    return prefs.get("check_for_updates", True) is not False
+def _updates_allowed(bk, prefs):
+    value = prefs.get(_UPDATE_KEY)
+    if value is None:
+        # First run: write the default so the file shows the choice exists.
+        prefs[_UPDATE_KEY] = _UPDATE_DEFAULT
+        bk.savePrefs(prefs)
+        return True
+    if isinstance(value, bool):
+        return value                      # calibre's checkbox writes a boolean
+    return str(value).strip().lower() in _ON_VALUES
 
 
 def _now():
@@ -167,7 +186,7 @@ def _since(stamp):
     return _now() - when
 
 
-def _stale_note(prefs):
+def _stale_note(prefs, allowed=True):
     """One quiet line when the binary has not been checked for a long time.
 
     A user working offline is not missing anything and should not be told
@@ -181,7 +200,7 @@ def _stale_note(prefs):
     age = _since(prefs.get("last_update_success"))
     if age is None or age < _STALE_AFTER:
         return None
-    if not _updates_allowed(prefs):
+    if not allowed:
         return "this epubveri is %d days old; update checks are off" % age.days
     return ("this epubveri is %d days old and could not be checked for "
             "updates" % age.days)
@@ -236,10 +255,10 @@ def _ensure_binary(bk):
         remember(sha)
         return installed, "installed epubveri"
 
-    if not _updates_allowed(prefs):
+    if not _updates_allowed(bk, prefs):
         # Chosen, so nothing is attempted and nothing is said about it. The
         # age line still applies: it is about the report, not the network.
-        return path, _stale_note(prefs)
+        return path, _stale_note(prefs, allowed=False)
 
     age = _since(prefs.get("last_update_check"))
     if age is not None and age < _UPDATE_INTERVAL:

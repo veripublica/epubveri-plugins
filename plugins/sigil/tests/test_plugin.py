@@ -338,40 +338,49 @@ class UpdateTests(unittest.TestCase):
         self.assertIsNotNone(path)
         self.assertIsNone(note)
 
-    def test_updates_can_be_turned_off_and_then_nothing_is_attempted(self):
-        """The preference is about the **network**, not the version.
-
-        Someone who turns it off is saying "do not use my connection" — a
-        metered link, an air-gapped machine, or preference. Nobody wants an
-        older validator from a tool whose releases are mostly fixes for wrong
-        errors. So "off" means no request at all, and no complaint about it.
-        """
-        import tempfile
+    def _allows(self, prefs):
         self._fake(remote=self.SHA_B)
-        plugin_dir = tempfile.mkdtemp()
-        orig_dir, plugin._plugin_dir = plugin._plugin_dir, lambda: plugin_dir
-        try:
-            base = {"installed_sha256": self.SHA_A, "last_update_check": None}
+        base = {"installed_sha256": self.SHA_A, "last_update_check": None}
+        base.update(prefs)
+        plugin._ensure_binary(FakeBk(base))
+        return bool(self.downloads)
 
-            # On by default.
-            plugin._ensure_binary(FakeBk(dict(base)))
-            self.assertEqual(len(self.downloads), 1)
+    def test_the_key_is_written_into_the_file_with_its_default(self):
+        """Sigil has no settings screen, so the JSON is the only place to
+        change this — and a key that is merely *honoured* would be invisible
+        there. Writing it on the first run makes the file document itself."""
+        self._fake(remote=self.SHA_A)
+        bk = FakeBk({"installed_sha256": self.SHA_A, "last_update_check": None})
+        plugin._ensure_binary(bk)
+        self.assertEqual(bk.prefs[plugin._UPDATE_KEY], "yes")
 
-            # Off by preference — what the calibre plugin's checkbox writes.
+    def test_anything_that_is_not_clearly_yes_stops_the_network(self):
+        """The direction matters more than the list.
+
+        This value is typed by hand, so it will not always be one of ours:
+        `hayır`, `nein`, `off`, or a typo. Listing what counts as *off* would
+        read every one of those as consent and keep using someone's connection
+        against their wishes — the worst thing this switch can do. Listing what
+        counts as *on* fails the other way, which is recoverable and shows up
+        in the report after a month.
+        """
+        for value in ("yes", "YES", " yes ", "true", "on", "1", True):
             self.downloads = []
-            _p, note = plugin._ensure_binary(
-                FakeBk(dict(base, check_for_updates=False)))
-            self.assertEqual(self.downloads, [])
-            self.assertIsNone(note, "turning it off must not be commented on")
-
-            # Off by the marker file — Sigil's escape hatch, since it has no
-            # settings screen to ask in.
-            open(os.path.join(plugin_dir, plugin._NO_UPDATE_MARKER), "w").close()
+            self.assertTrue(self._allows({plugin._UPDATE_KEY: value}),
+                            "%r should allow updates" % (value,))
+        for value in ("no", "No", "hayır", "nein", "off", "0", False, "",
+                      "yse", "maybe"):
             self.downloads = []
-            plugin._ensure_binary(FakeBk(dict(base)))
-            self.assertEqual(self.downloads, [])
-        finally:
-            plugin._plugin_dir = orig_dir
+            self.assertFalse(self._allows({plugin._UPDATE_KEY: value}),
+                             "%r must not reach the network" % (value,))
+
+    def test_turning_it_off_is_not_commented_on(self):
+        self._fake(remote=self.SHA_B)
+        _p, note = plugin._ensure_binary(FakeBk({
+            "installed_sha256": self.SHA_A, "last_update_check": None,
+            plugin._UPDATE_KEY: "no"}))
+        self.assertEqual(self.downloads, [])
+        self.assertIsNone(note)
 
     def test_the_age_line_survives_turning_updates_off(self):
         """Because it is not about the network.
@@ -385,7 +394,7 @@ class UpdateTests(unittest.TestCase):
         self._fake(remote=self.SHA_A)
         _p, note = plugin._ensure_binary(FakeBk({
             "installed_sha256": self.SHA_A,
-            "check_for_updates": False,
+            plugin._UPDATE_KEY: "no",
             "last_update_success": old,
         }))
         self.assertIn("300 days old", note)

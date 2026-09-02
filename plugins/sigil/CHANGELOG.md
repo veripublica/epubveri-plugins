@@ -36,13 +36,14 @@ here.
   installed the plugin, and almost every recent epubveri release fixed a wrong
   error on a valid book. A failed check is silent and is recorded, so an
   offline machine makes one failed request an hour rather than one per book.
-- **Updates can be turned off** with an empty `NO-UPDATES` file in the plugin
-  folder. The preference is about the *network*, not the version — nobody
-  wants an older validator from a tool whose releases are mostly fixes for
-  wrong errors — so "off" means no request at all and no comment about it.
-  The age line below still appears, reworded, because it explains a finding
-  rather than nagging about an update. (calibre gets a checkbox; Sigil has no
-  settings screen, which is why this is a file.)
+- **Updates can be turned off** by changing `"update": "yes"` to `"no"` in
+  `plugins_prefs/epubveri/epubveri.json`. The key is **written there on the
+  first run** rather than only read, so the file shows that the choice exists —
+  Sigil has no settings screen, so a key that were merely honoured would be
+  invisible. Anything not clearly a yes is read as no, since using someone's
+  connection after they declined is the worst thing this switch can do. The
+  preference governs the *network*, not the version, so the age line below
+  still appears.
 - **Offline is silent** — measured over 144 validations across three days with
   no network: no error, no warning, nothing missing. After **thirty days**
   without a successful check the summary adds one line saying how old the copy
