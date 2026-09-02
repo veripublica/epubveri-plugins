@@ -48,8 +48,13 @@ NAV = ('<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1
        'xmlns:epub="http://www.idpf.org/2007/ops"><head><title>T</title></head><body>'
        '<nav epub:type="toc"><ol><li><a href="Text/ch1.xhtml">Ch1</a></li></ol></nav>'
        '</body></html>')
+# `fake` draws a message that QUOTES the attribute name (the shape that broke
+# Sigil's result XML), and `colour` draws an ADV-001 advisory - the two things
+# the display layer has to get right.
 CH1 = ('<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml">'
-       '<head><title>t</title></head><body><p fake="x">x</p></body></html>')
+       '<head><title>t</title>'
+       '<style type="text/css">p { colour: red }</style></head>'
+       '<body><p fake="x">x</p></body></html>')
 CONTAINER = ('<?xml version="1.0"?>\n<container version="1.0" '
              'xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles>'
              '<rootfile full-path="OEBPS/content.opf" '
@@ -315,10 +320,42 @@ class RunTests(unittest.TestCase):
                                          message)
             ET.fromstring(doc)   # the whole point: Sigil must be able to read it
 
-    def test_advisory_is_off_by_default(self):
+    def test_advisory_is_off_by_default_but_the_summary_says_it_exists(self):
+        """Off by default, and **announced anyway**.
+
+        The family is opt-in on purpose: reporting something epubcheck is
+        silent about is indistinguishable from a false positive to anyone
+        comparing the two tools. But a switch nobody knows about is a feature
+        nobody has, so both flags are always *fetched* and the summary names
+        what it hid — a reader learns it exists because their own book has
+        something to show.
+        """
         off = FakeBk()
         plugin.run(off)
-        self.assertFalse(any("[advisory:" in r[4] for r in off.results))
+        self.assertFalse(any("[advisory:" in r[4] for r in off.results),
+                         "advisory findings must not be shown unasked")
+        summary = off.results[-1][4]
+        self.assertIn("advisory finding", summary, summary)
+        self.assertIn("epubcheck does not make", summary, summary)
+        self.assertIn("usage note", summary, summary)
+
+        on = FakeBk({"advisory": True})
+        plugin.run(on)
+        self.assertTrue(any("ADV-001" in r[4] for r in on.results),
+                        [r[4] for r in on.results])
+        self.assertTrue(any("[advisory: spec-silent]" in r[4]
+                            for r in on.results))
+        # ...and once shown, it is no longer announced as hidden.
+        self.assertNotIn("advisory finding", on.results[-1][4])
+
+    def test_the_verdict_never_moves_with_the_advisory_switch(self):
+        """The promise the whole family rests on, checked at the plugin's own
+        boundary rather than trusted from the library."""
+        off, on = FakeBk(), FakeBk({"advisory": True})
+        plugin.run(off)
+        plugin.run(on)
+        verdict = lambda bk: "VALID" if "— VALID" in bk.results[-1][4] else "NOT VALID"
+        self.assertEqual(verdict(off), verdict(on))
 
 
 if __name__ == "__main__":

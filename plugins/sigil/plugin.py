@@ -167,12 +167,23 @@ def _char_offset(workdir, location, line, column):
 
 
 def _report(bk, envelope, workdir, prefs):
+    """Show what the preferences allow, and count what they hid.
+
+    Both categories are always *fetched* — see `client/runner.py`. Counting
+    them here is what lets the summary say "3 advisory findings hidden" rather
+    than leaving a checkbox to be discovered: a reader learns the feature
+    exists because their own book has something to show, which is the only
+    argument for it that is ever going to land.
+    """
     shown = 0
+    hidden = {"usage": 0, "advisory": 0}
     for finding in sorted(envelope.findings, key=lambda f: f.sort_key):
         if finding.is_advisory and not prefs["advisory"]:
+            hidden["advisory"] += 1
             continue
         if finding.severity == "usage" and not finding.is_advisory \
                 and not prefs["show_usage"]:
+            hidden["usage"] += 1
             continue
 
         text = "%s %s: %s" % (finding.severity.upper(), finding.code,
@@ -194,7 +205,7 @@ def _report(bk, envelope, workdir, prefs):
             bk.add_extended_result(restype, _xml_attr(bookpath), line, offset,
                                    _xml_attr(text))
         shown += 1
-    return shown
+    return shown, hidden
 
 
 def run(bk):
@@ -216,8 +227,12 @@ def run(bk):
     try:
         epub_path, workdir = _build_epub(bk, tmpdir)
         try:
-            envelope = runner.run_epubveri(
-                binary, epub_path, advisory=prefs["advisory"])
+            # Both switches are display-only: fetch everything, filter in
+            # `_report`. Passing the preference here instead would make the
+            # summary counts describe the switch rather than the book, and
+            # would need a second validation of the same file to change a
+            # display setting.
+            envelope = runner.run_epubveri(binary, epub_path)
         except EnvelopeError as exc:
             bk.add_result("error", "", -1, _xml_attr("epubveri: %s" % exc))
             return -1
@@ -232,16 +247,24 @@ def run(bk):
                 % (envelope.error or "no reason given")))
             return -1
 
-        shown = _report(bk, envelope, workdir, prefs)
+        shown, hidden = _report(bk, envelope, workdir, prefs)
         verdict = "VALID" if envelope.is_valid else "NOT VALID"
-        hidden = len(envelope.findings) - shown
         summary = "epubveri %s — %s (%d error(s), %d warning(s))" % (
             envelope.version, verdict,
             envelope.count("error") + envelope.count("fatal"),
             envelope.count("warning"))
-        if hidden:
-            summary += "; %d hidden — see the plugin's preferences for " \
-                       "usage notes and advisory checks" % hidden
+        # Name the two categories separately. "12 hidden" tells a reader
+        # nothing about which switch to reach for, and the advisory half is
+        # the one they have no reason to suspect exists.
+        notes = []
+        if hidden["usage"]:
+            notes.append("%d usage note(s)" % hidden["usage"])
+        if hidden["advisory"]:
+            notes.append("%d advisory finding(s) epubcheck does not make"
+                         % hidden["advisory"])
+        if notes:
+            summary += "; hidden: %s — turn them on in Plugins > Manage " \
+                       "Plugins > epubveri" % ", ".join(notes)
         bk.add_result("info", "", -1, _xml_attr(summary))
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)

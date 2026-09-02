@@ -7,12 +7,22 @@
 # any later version. See the LICENSE file at the root of this repository.
 """Invoke epubveri and hand back a parsed envelope.
 
-`-u` is passed **always**, and that is a deliberate reversal of what the two
-third-party plugins do. epubveri hides `usage` findings without it, exactly as
-epubcheck does — but the flag belongs at the *display* layer, not at the fetch:
-gating it here makes the summary counts describe the flag instead of the book,
-and re-running the validator to change a display preference is a second
-validation of the same file.
+`-u` and `--advisory` are passed **always**, and that is a deliberate reversal
+of what the two third-party plugins do. epubveri hides `usage` findings without
+`-u`, exactly as epubcheck does, and `--advisory` is opt-in by design — but
+both flags belong at the *display* layer, not at the fetch. Gating them here
+makes the summary counts describe the flags instead of the book, and re-running
+the validator to change a display preference is a second validation of the same
+file.
+
+**Fetching them is not the same as showing them, and the difference is the
+whole point.** With both in hand the plugin can tell a user what their own book
+would have said — "3 advisory findings hidden" — instead of leaving a
+preferences checkbox to be discovered. What it must not do is show them
+unasked: reporting something epubcheck is silent about is indistinguishable
+from a false positive to anyone comparing the two tools, which is why the
+family is opt-in in the first place. Neither ever moves the verdict; epubveri
+guarantees that, measured across 444 books.
 """
 
 import os
@@ -47,7 +57,7 @@ def _no_window_kwargs():
     }
 
 
-def run_epubveri(binary, epub_path, advisory=False, profile=None,
+def run_epubveri(binary, epub_path, advisory=True, profile=None,
                  epub_version=None, timeout=DEFAULT_TIMEOUT):
     """Validate one packaged `.epub` and return an `Envelope`.
 
