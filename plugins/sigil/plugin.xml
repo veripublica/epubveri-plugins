@@ -2,7 +2,7 @@
 <plugin>
 <name>epubveri</name>
 <type>validation</type>
-<author>veripublica</author>
+<author>Baris Kayadelen (veripublica)</author>
 <description>Validate the current book with epubveri, a fast JVM-free EPUB validator.</description>
 <autostart>false</autostart>
 <engine>python3.4</engine>

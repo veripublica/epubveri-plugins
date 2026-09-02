@@ -27,7 +27,7 @@ class EpubVeriPlugin(EditBookToolPlugin):
 
     name = PLUGIN_NAME
     version = PLUGIN_VERSION_TUPLE
-    author = 'veripublica'
+    author = 'Baris Kayadelen (veripublica)'
     supported_platforms = ['windows', 'osx', 'linux']
     description = (
         'Validate the book you are editing with epubveri, a fast JVM-free '
