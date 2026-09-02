@@ -1,8 +1,13 @@
 # epubveri-plugins
 
-Editor plugins for [**epubveri**](https://github.com/veripublica/epubveri) — a
-pure-Rust, JVM-free EPUB validator. They put epubveri inside the editor you
-already use, so validating a book is a menu item instead of a terminal.
+[**epubveri**](https://github.com/veripublica/epubveri) **checks whether an
+EPUB file conforms to the specification** — the job epubcheck does, in pure
+Rust with no JVM. It reads a book and reports what is wrong with it. **It never
+changes anything.**
+
+These are plugins that run it inside the editors people already use, so
+validating the book you are working on is a menu item instead of a terminal.
+The editing is the editor's; the verdict is epubveri's.
 
 | plugin | for | status |
 |---|---|---|

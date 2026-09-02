@@ -1,8 +1,9 @@
 # epubveri for calibre
 
-Validates the book open in calibre's **Edit Book** tool with
-[epubveri](https://github.com/veripublica/epubveri) — no Java, sub-second, and
-reporting epubcheck's own message IDs so the output is recognisable.
+Checks the book open in calibre's **Edit Book** tool against the EPUB
+specification with [epubveri](https://github.com/veripublica/epubveri) — no
+Java, sub-second, and reporting epubcheck's own message IDs so the output is
+recognisable. **It reads your book and reports; it changes nothing.**
 
 > **Status: not released.** The half that talks to epubveri is finished and is
 > the same code the Sigil plugin's tests exercise. The half that talks to

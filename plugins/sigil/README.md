@@ -1,8 +1,9 @@
 # epubveri for Sigil
 
-Validates the book you have open in [Sigil](https://sigil-ebook.com/) with
-[epubveri](https://github.com/veripublica/epubveri), and puts each finding on
-the line it belongs to.
+Checks the book you have open in [Sigil](https://sigil-ebook.com/) against the
+EPUB specification with [epubveri](https://github.com/veripublica/epubveri),
+and puts each finding on the line it belongs to. **It reads your book and
+reports; it changes nothing.**
 
 Sigil already has a validation panel; this adds a second opinion to it — one
 that needs no Java, answers in well under a second, and reports epubcheck's own

@@ -1,4 +1,4 @@
-# epubveri for calibre — the editor tool
+# epubveri for calibre — the Edit Book tool
 # Copyright (C) 2026 Baris Kayadelen
 #
 # This program is free software: you can redistribute it and/or modify it
