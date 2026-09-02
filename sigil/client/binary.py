@@ -7,9 +7,9 @@
 # any later version. See the LICENSE file at the root of this repository.
 """Get a trustworthy epubveri binary onto the user's machine.
 
-**No binary is shipped inside a plugin package, and that is a licence decision
-as much as a size one.** epubveri is AGPL-3.0-only OR commercial; these plugins
-are GPL-3.0. Because the plugin only ever runs the binary as a subprocess and
+**No binary is shipped inside the plugin zip, and that is a licence decision
+as much as a size one.** epubveri is AGPL-3.0-only OR commercial; this plugin
+is GPL-3.0. Because the plugin only ever runs the binary as a subprocess and
 never links it, and because the user's own machine fetches it from the
 project's releases, a plugin package distributes no AGPL code at all and
 carries none of the notice or source-offer obligations that would follow.

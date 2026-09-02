@@ -1,4 +1,4 @@
-# epubveri-plugins — tests for the Sigil plugin
+# epubveri for Sigil — tests
 # Copyright (C) 2026 Baris Kayadelen
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -22,9 +22,8 @@ import sys
 import unittest
 import zipfile
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "sigil"))
+PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PLUGIN_DIR)
 
 import plugin  # noqa: E402
 

@@ -6,9 +6,21 @@ already use, so validating a book is a menu item rather than a terminal.
 
 | | |
 |---|---|
-| `sigil/` | plugin for [Sigil](https://sigil-ebook.com/) |
-| `client/` | the shared half: fetching and verifying the binary, and reading epubveri's JSON envelope |
-| `build.py` | produces one installable zip per editor into `dist/` |
+| `sigil/` | the plugin for [Sigil](https://sigil-ebook.com/) — everything it needs |
+| `build.py` | packages a plugin folder into an installable zip, into `dist/` |
+
+**Each plugin is self-contained, and stays that way even when two of them are
+written in the same language.** They are applications for different programs
+that happen to share a language, not one thing in two dialects — so a reader
+who wants to audit the Sigil plugin reads `sigil/` and is done, with no shared
+directory to hold in their head and no build-time copying that is invisible in
+the tree.
+
+That is a deliberate trade against duplication. The alternative — one shared
+client — turned out to buy less than it looked: a calibre plugin has calibre's
+own `JSONConfig`, `iswindows` and plugin-directory conventions to use, so a
+shared client would have to be either watered down to what both editors have
+or filled with per-editor branches.
 
 ## Installing
 
@@ -33,12 +45,9 @@ python3 build.py            # writes dist/sigil_epubveri_v<version>.zip
 python3 build.py sigil      # just that one
 ```
 
-`build.py` lives at the root rather than inside `sigil/` because it serves
-every editor and because `client/` is shared: the build **copies** it into each
-package, since a Sigil plugin is a flat folder and a calibre plugin is a zip
-and neither can import a sibling package from elsewhere on disk. That is also
-why nothing in `client/` may import from `sigil/` or `calibre/` — the
-dependency runs one way, and the build only ever copies in that direction.
+`build.py` sits at the root because it packages every plugin, but it generates
+nothing: a plugin folder is already the whole plugin, and the build only zips it
+with the licence in the layout the editor expects (and leaves `tests/` behind).
 
 ## Licensing
 

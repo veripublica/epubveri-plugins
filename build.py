@@ -8,11 +8,16 @@
 # any later version. See the LICENSE file at the root of this repository.
 """Produce one installable zip per editor, into `dist/`.
 
-**`client/` is vendored, not depended on.** A Sigil plugin is a flat folder and
-a calibre plugin is a zip; neither can import a sibling package from elsewhere
-on disk. So the shared code is copied into each package here, which is also why
-`client/` must never import from `sigil/` or `calibre/` — the dependency runs
-one way and the build enforces it by only ever copying in that direction.
+**Each plugin folder is already the whole plugin**, so this only packages: it
+copies the folder plus the licence into a zip laid out the way the editor
+expects. Nothing is generated and nothing is shared between plugins — they are
+applications for different programs and each carries its own code, so that a
+reader auditing one of them reads one folder.
+
+Both editors install from a zip and never from a folder (Sigil's dialog is
+titled "Select Plugin Zip Archive" and filters on `Plugin Files (*.zip)`;
+calibre's "Load plugin from file" is the same), which is why this step exists
+at all.
 
 No epubveri binary is packaged. The plugin fetches one from the project's own
 releases and verifies it against `SHA256SUMS.txt`, which keeps an AGPL binary
@@ -27,9 +32,10 @@ import zipfile
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DIST = os.path.join(ROOT, "dist")
 
-# name -> (source dir, files taken from it)
+#: plugin name -> its folder. Adding an editor is adding a line and a folder;
+#: nothing else in this file knows anything about a particular plugin.
 PACKAGES = {
-    "sigil": ("sigil", ("plugin.py", "plugin.xml")),
+    "sigil": "sigil",
 }
 
 
@@ -47,19 +53,18 @@ def _plugin_version(srcdir):
 
 
 def build(name):
-    srcdir = os.path.join(ROOT, PACKAGES[name][0])
+    srcdir = os.path.join(ROOT, PACKAGES[name])
     version = _plugin_version(srcdir)
     staging = os.path.join(DIST, "%s-staging" % name)
     shutil.rmtree(staging, ignore_errors=True)
     os.makedirs(staging)
 
-    for filename in PACKAGES[name][1]:
-        shutil.copy2(os.path.join(srcdir, filename), staging)
-
-    # The vendored client, without any build or test residue.
-    shutil.copytree(os.path.join(ROOT, "client"),
-                    os.path.join(staging, "client"),
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    # The plugin folder as it stands, minus build and test residue.
+    shutil.copytree(srcdir, staging,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc",
+                                                  "epubveri", "epubveri.exe",
+                                                  "tests"),
+                    dirs_exist_ok=True)
     # GPL-3 §4: keep the licence with the thing that is conveyed.
     shutil.copy2(os.path.join(ROOT, "LICENSE"), staging)
 
