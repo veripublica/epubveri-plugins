@@ -84,11 +84,17 @@ everything and judge for yourself.
   cost is a connection that accepts and then goes nowhere (a captive portal, a
   firewall that drops rather than refuses), which spends five seconds once an
   hour before giving up.
+- **Do not want it touching the network at all?** Put an empty file named
+  `NO-UPDATES` in the plugin's folder (*Plugins / Manage Plugins* shows where
+  that is). Nothing is then requested, ever, and nothing is said about it. The
+  calibre plugin has a checkbox for the same thing; Sigil has no settings
+  screen for a plugin, so this is the equivalent.
 - **After a month offline** the summary adds one line: *"this epubveri is 45
   days old and could not be checked for updates"*. Not an error and not a
   warning — the validator works. It is there because a copy that old may
   report something that has since been fixed, so if a finding looks wrong,
-  that line is the first thing to suspect.
+  that line is the first thing to suspect. It appears whether checks are off
+  by choice or by circumstance — it is about the report, not the network.
 - **The first run does need the network**, because there is no binary yet. If
   it cannot download one it says so and validates nothing — there is nothing to
   validate with.

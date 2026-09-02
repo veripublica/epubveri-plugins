@@ -31,6 +31,21 @@ and neither can break the other.
 On first use it downloads the epubveri binary for your platform and verifies it
 against the release's `SHA256SUMS.txt`. The plugin zip contains no binary.
 
+## Settings
+
+*Preferences / Plugins / Customize*, one checkbox: **keep epubveri up to date
+automatically**. On by default; at most once an hour it reads 842 bytes of
+checksums and installs a newer epubveri if there is one, verifying it first.
+
+**It is about the network, not the version.** Clearing it stops every request —
+for a metered connection, an air-gapped machine, or preference — and nothing is
+said about it afterwards. What it does not stop is the line telling you how old
+your copy is after a month without a check: that is an explanation for a
+finding that looks wrong, not a nag.
+
+Sigil has no settings screen for a plugin at all, so its half of this
+repository uses a `NO-UPDATES` marker file instead.
+
 ## Licensing
 
 GPL-3.0-only, and here that is a requirement rather than a choice: this plugin

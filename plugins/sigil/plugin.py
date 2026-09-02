@@ -121,6 +121,29 @@ _STALE_AFTER = timedelta(days=30)
 _CHECK_TIMEOUT = 5
 
 
+#: A file of this name beside the plugin turns every network call off.
+#:
+#: Sigil gives a plugin no settings screen, so this is the escape hatch for
+#: someone who does not want a tool touching their connection — a metered link,
+#: an air-gapped machine, or simple preference. It is a file rather than a
+#: preference key because a file is something a person can create without
+#: knowing what JSON is, and because "the plugin folder contains NO-UPDATES" is
+#: a state you can see. The preference key is honoured too, for whoever prefers
+#: it and for the calibre plugin, which does have a checkbox.
+#:
+#: **What it turns off is the network, not the report.** Someone who sets it is
+#: saying "do not use my connection", not "keep me on an old validator" — so
+#: the age line below still appears, because that is an explanation for a
+#: finding that looks wrong rather than a nag to update.
+_NO_UPDATE_MARKER = "NO-UPDATES"
+
+
+def _updates_allowed(prefs):
+    if os.path.exists(os.path.join(_plugin_dir(), _NO_UPDATE_MARKER)):
+        return False
+    return prefs.get("check_for_updates", True) is not False
+
+
 def _now():
     """UTC, timezone-aware. `datetime.utcnow()` is deprecated in the Python
     Sigil bundles (3.14) and is scheduled for removal."""
@@ -158,6 +181,8 @@ def _stale_note(prefs):
     age = _since(prefs.get("last_update_success"))
     if age is None or age < _STALE_AFTER:
         return None
+    if not _updates_allowed(prefs):
+        return "this epubveri is %d days old; update checks are off" % age.days
     return ("this epubveri is %d days old and could not be checked for "
             "updates" % age.days)
 
@@ -210,6 +235,11 @@ def _ensure_binary(bk):
         installed, sha = bin_mod.download_binary(_plugin_dir())
         remember(sha)
         return installed, "installed epubveri"
+
+    if not _updates_allowed(prefs):
+        # Chosen, so nothing is attempted and nothing is said about it. The
+        # age line still applies: it is about the report, not the network.
+        return path, _stale_note(prefs)
 
     age = _since(prefs.get("last_update_check"))
     if age is not None and age < _UPDATE_INTERVAL:

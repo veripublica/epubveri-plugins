@@ -338,6 +338,60 @@ class UpdateTests(unittest.TestCase):
         self.assertIsNotNone(path)
         self.assertIsNone(note)
 
+    def test_updates_can_be_turned_off_and_then_nothing_is_attempted(self):
+        """The preference is about the **network**, not the version.
+
+        Someone who turns it off is saying "do not use my connection" — a
+        metered link, an air-gapped machine, or preference. Nobody wants an
+        older validator from a tool whose releases are mostly fixes for wrong
+        errors. So "off" means no request at all, and no complaint about it.
+        """
+        import tempfile
+        self._fake(remote=self.SHA_B)
+        plugin_dir = tempfile.mkdtemp()
+        orig_dir, plugin._plugin_dir = plugin._plugin_dir, lambda: plugin_dir
+        try:
+            base = {"installed_sha256": self.SHA_A, "last_update_check": None}
+
+            # On by default.
+            plugin._ensure_binary(FakeBk(dict(base)))
+            self.assertEqual(len(self.downloads), 1)
+
+            # Off by preference — what the calibre plugin's checkbox writes.
+            self.downloads = []
+            _p, note = plugin._ensure_binary(
+                FakeBk(dict(base, check_for_updates=False)))
+            self.assertEqual(self.downloads, [])
+            self.assertIsNone(note, "turning it off must not be commented on")
+
+            # Off by the marker file — Sigil's escape hatch, since it has no
+            # settings screen to ask in.
+            open(os.path.join(plugin_dir, plugin._NO_UPDATE_MARKER), "w").close()
+            self.downloads = []
+            plugin._ensure_binary(FakeBk(dict(base)))
+            self.assertEqual(self.downloads, [])
+        finally:
+            plugin._plugin_dir = orig_dir
+
+    def test_the_age_line_survives_turning_updates_off(self):
+        """Because it is not about the network.
+
+        "This copy is 300 days old" is the explanation for a finding that
+        looks wrong. Hiding it from the person most likely to hit one — who
+        deliberately froze their binary — would be the wrong kindness. The
+        wording changes so it does not read as a failure.
+        """
+        old = (datetime.now(timezone.utc) - timedelta(days=300)).isoformat()
+        self._fake(remote=self.SHA_A)
+        _p, note = plugin._ensure_binary(FakeBk({
+            "installed_sha256": self.SHA_A,
+            "check_for_updates": False,
+            "last_update_success": old,
+        }))
+        self.assertIn("300 days old", note)
+        self.assertIn("update checks are off", note)
+        self.assertNotIn("could not", note)
+
     def test_a_long_stretch_offline_eventually_says_the_copy_is_old(self):
         """Silent for a fortnight, one quiet line after a month.
 

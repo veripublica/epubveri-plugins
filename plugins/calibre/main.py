@@ -25,10 +25,56 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from calibre.gui2 import error_dialog, info_dialog
 from calibre.gui2.tweak_book.plugin import Tool
+from calibre.utils.config import JSONConfig
+from qt.core import QCheckBox, QLabel, QVBoxLayout, QWidget
 
 from client import binary as bin_mod
 from client import runner
 from client.envelope import EnvelopeError
+
+
+#: calibre's own store, so the settings live where a calibre user expects them
+#: and survive a plugin upgrade.
+prefs = JSONConfig('plugins/epubveri')
+prefs.defaults['check_for_updates'] = True
+
+
+class ConfigWidget(QWidget):
+    """Preferences / Plugins / Customize.
+
+    One checkbox, and it is about **the network rather than the version**.
+    Someone who clears it is saying "do not use my connection" — a metered
+    link, an air-gapped machine, or preference — not "keep me on an older
+    validator", which nobody wants from a tool whose releases are mostly fixes
+    for wrong errors.
+
+    So clearing it stops every network call, and says nothing further about
+    it. What it does not stop is the line telling you how old the binary is
+    after a long time without a check: that is an explanation for a finding
+    that looks wrong, not a nag to update.
+    """
+
+    def __init__(self):
+        QWidget.__init__(self)
+        layout = QVBoxLayout(self)
+        self.check_updates = QCheckBox(
+            'Keep epubveri up to date automatically', self)
+        self.check_updates.setChecked(bool(prefs['check_for_updates']))
+        self.check_updates.setToolTip(
+            'Reads 842 bytes of checksums at most once an hour and installs a '
+            'newer epubveri if there is one, verifying it first.\n'
+            'Clear this to make the plugin use the network never.')
+        layout.addWidget(self.check_updates)
+        note = QLabel(
+            'epubveri itself is downloaded once, on first use, and verified '
+            'against the release checksums.\nWith this off it is never '
+            'updated, and the report says how old it is after a month.', self)
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        layout.addStretch()
+
+    def save_settings(self):
+        prefs['check_for_updates'] = self.check_updates.isChecked()
 
 
 class EpubVeriTool(Tool):

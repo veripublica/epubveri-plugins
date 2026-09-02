@@ -35,3 +35,14 @@ class EpubVeriPlugin(EditBookToolPlugin):
         'use; nothing else is installed.'
     )
     minimum_calibre_version = (6, 0, 0)
+
+    #: calibre offers what Sigil does not: a settings page, reached from
+    #: Preferences / Plugins / Customize. So this plugin asks rather than
+    #: guessing, and the Sigil plugin's NO-UPDATES marker file exists only
+    #: because it has nowhere to ask.
+    def config_widget(self):
+        from calibre_plugins.epubveri.main import ConfigWidget
+        return ConfigWidget()
+
+    def save_settings(self, config_widget):
+        config_widget.save_settings()
