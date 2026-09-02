@@ -34,8 +34,13 @@ import zipfile
 from urllib.request import Request, urlopen
 
 REPO = "veripublica/epubveri"
-LATEST_RELEASE_URL = "https://api.github.com/repos/%s/releases/latest" % REPO
 CHECKSUMS_NAME = "SHA256SUMS.txt"
+
+#: GitHub serves the newest release's assets from a stable path, so nothing
+#: here needs the API. That matters twice over: the API answers with **31 KB**
+#: of JSON where `SHA256SUMS.txt` is **842 bytes**, and it is rate-limited for
+#: unauthenticated callers where a release download is not.
+LATEST_DOWNLOAD = "https://github.com/%s/releases/latest/download/%%s" % REPO
 
 #: Every network call gets one. Neither third-party plugin set a timeout, so a
 #: hung connection froze the editor with no way out; Python's default here is
@@ -97,16 +102,22 @@ def _get(url, timeout=NETWORK_TIMEOUT):
         return response.read()
 
 
-def latest_release():
-    """`{"tag": "v0.13.3", "version": "0.13.3", "assets": {name: url}}`."""
-    doc = json.loads(_get(LATEST_RELEASE_URL).decode("utf-8", "replace"))
-    tag = doc.get("tag_name", "")
-    return {
-        "tag": tag,
-        "version": tag.lstrip("v"),
-        "assets": {a["name"]: a["browser_download_url"]
-                   for a in doc.get("assets") or []},
-    }
+def latest_checksums(timeout=NETWORK_TIMEOUT):
+    """`{asset name: sha256}` for the newest release. 842 bytes.
+
+    **This is the update check.** Comparing checksums rather than version
+    numbers is smaller, needs no `epubveri -V` process, and is strictly more
+    sensitive: it also catches an archive re-uploaded under the same tag, and a
+    local copy that has been corrupted or replaced.
+    """
+    text = _get(LATEST_DOWNLOAD % CHECKSUMS_NAME, timeout).decode("utf-8",
+                                                                 "replace")
+    sums = {}
+    for line in text.splitlines():
+        match = re.match(r"^([0-9a-fA-F]{64})\s+\*?(\S+)\s*$", line)
+        if match:
+            sums[os.path.basename(match.group(2))] = match.group(1).lower()
+    return sums
 
 
 def _expected_sha256(checksums_text, name):
@@ -148,53 +159,44 @@ def parse_version(text):
         return None
 
 
-def download_binary(destdir, release=None, verify=True):
-    """Fetch the right archive, verify it, extract the binary into `destdir`.
+def download_binary(destdir, expected=None, timeout=NETWORK_TIMEOUT):
+    """Fetch the newest archive, verify it, extract the binary into `destdir`.
 
-    Returns the path to the binary. Raises `DownloadError` with a sentence fit
-    to show a user — the caller has no better information to add.
+    Returns `(path, sha256)`. The hash is what the caller stores: the next
+    check is a string comparison against 842 bytes rather than a download.
+
+    Raises `DownloadError` with a sentence fit to show a user — the caller has
+    no better information to add.
     """
-    release = release or latest_release()
     name = asset_name()
     if name is None:
         raise DownloadError(
             "no epubveri build for this platform (%s %s); it can be built from "
             "source, or run from a terminal instead"
             % (platform.system(), platform.machine()))
-    url = release["assets"].get(name)
-    if url is None:
-        raise DownloadError("release %s has no asset named %s"
-                            % (release["tag"], name))
 
-    expected = None
-    if verify:
-        checksums_url = release["assets"].get(CHECKSUMS_NAME)
-        if checksums_url is None:
-            # Releases before 0.12.4 carry no checksum file. Refusing would
-            # make the plugin unable to install an older epubveri at all, so
-            # this is reported rather than fatal.
-            expected = None
-        else:
-            text = _get(checksums_url).decode("utf-8", "replace")
-            expected = _expected_sha256(text, name)
-            if expected is None:
-                raise DownloadError(
-                    "%s does not list %s — refusing to install an archive the "
-                    "release does not vouch for" % (CHECKSUMS_NAME, name))
+    if expected is None:
+        sums = latest_checksums(timeout)
+        expected = sums.get(name)
+        if expected is None:
+            raise DownloadError(
+                "%s does not list %s — refusing to install an archive the "
+                "release does not vouch for" % (CHECKSUMS_NAME, name))
 
     tmpdir = tempfile.mkdtemp(prefix="epubveri-dl-")
     try:
         archive = os.path.join(tmpdir, name)
         with open(archive, "wb") as handle:
-            handle.write(_get(url))
+            handle.write(_get(LATEST_DOWNLOAD % name, timeout))
 
-        if expected is not None:
-            actual = _sha256(archive)
-            if actual != expected:
-                raise DownloadError(
-                    "checksum mismatch for %s: the release lists %s and the "
-                    "downloaded file is %s. Nothing was installed."
-                    % (name, expected[:16], actual[:16]))
+        # Verified before it is ever extracted, let alone run. This is the
+        # only reason a user can trust a binary that arrived over the network.
+        actual = _sha256(archive)
+        if actual != expected:
+            raise DownloadError(
+                "checksum mismatch for %s: the release lists %s and the "
+                "downloaded file is %s. Nothing was installed."
+                % (name, expected[:16], actual[:16]))
 
         binary = binary_filename()
         extracted = os.path.join(tmpdir, "x")
@@ -220,6 +222,6 @@ def download_binary(destdir, release=None, verify=True):
         shutil.copy2(found, target)
         mode = os.stat(target).st_mode
         os.chmod(target, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        return target
+        return target, expected
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)

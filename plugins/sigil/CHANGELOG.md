@@ -26,13 +26,16 @@ here.
   verdict is unaffected". Only errors, fatals and warnings decide VALID/NOT
   VALID, exactly as in epubcheck.
 - Every network call has a timeout, so a hung connection cannot freeze Sigil.
-- **Keeps epubveri current on its own**, checking once a day and verifying the
-  checksum of anything it installs. Without it a user would be pinned to
-  whatever shipped the day they installed the plugin — and almost every recent
-  epubveri release fixed a wrong error on a valid book, so a stale copy keeps
-  reporting something already known to be untrue. A failed check is silent and
-  is recorded, so an offline machine makes one failed request a day rather than
-  one per validation.
+- **Keeps epubveri current on its own**, by comparing checksums rather than
+  version numbers: at most once an hour it reads the release's
+  `SHA256SUMS.txt` (842 bytes, no GitHub API, no `epubveri -V`) and compares
+  one line against the hash it stored. Smaller than asking the API — 31 KB of
+  JSON, rate-limited — and stricter, since it also catches an archive
+  re-uploaded under the same tag or a local copy that has been replaced.
+  Without any of this a user would be pinned to whatever shipped the day they
+  installed the plugin, and almost every recent epubveri release fixed a wrong
+  error on a valid book. A failed check is silent and is recorded, so an
+  offline machine makes one failed request an hour rather than one per book.
 - **Findings are escaped for Sigil's result XML.** Sigil builds that document
   by raw interpolation and escapes only some of its own strings, so a message
   containing a double quote ended the attribute and Sigil answered "Error

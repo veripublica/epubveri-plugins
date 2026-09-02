@@ -230,90 +230,114 @@ class ResultXmlTests(unittest.TestCase):
 
 
 class UpdateTests(unittest.TestCase):
-    """The plugin fetches a newer epubveri on its own, once a day.
+    """The plugin keeps epubveri current on its own.
 
-    Without this a user is pinned to whatever shipped the day they installed —
+    Without it a user is pinned to whatever shipped the day they installed —
     and almost every recent epubveri release fixed a *wrong error on a valid
     book*, so a stale binary keeps telling its owner something we already know
-    is untrue. Nothing here may stop a validation, so every failure path is
-    checked too.
+    is untrue.
+
+    The check is a **checksum** comparison, not a version comparison: 842 bytes
+    of `SHA256SUMS.txt` against one stored string, with no GitHub API and no
+    `epubveri -V`. It is also stricter — it notices an archive re-uploaded
+    under the same tag and a local copy that has been replaced. Nothing here
+    may stop a validation, so every failure path is checked too.
     """
 
+    SHA_A = "a" * 64
+    SHA_B = "b" * 64
+
     def setUp(self):
-        self.calls = []
-        self._orig = (bin_mod.latest_release, bin_mod.download_binary,
+        self.downloads = []
+        self._orig = (bin_mod.latest_checksums, bin_mod.download_binary,
                       runner.binary_version, plugin._binary_path)
         plugin._binary_path = lambda: __file__      # any existing file
 
     def tearDown(self):
-        (bin_mod.latest_release, bin_mod.download_binary,
+        (bin_mod.latest_checksums, bin_mod.download_binary,
          runner.binary_version, plugin._binary_path) = self._orig
 
-    def _fake(self, latest="0.14.0", current="epubveri 0.13.3+abc",
-              release_raises=None, download_raises=None):
-        def latest_release():
-            if release_raises:
-                raise release_raises
-            return {"version": latest, "tag": "v" + latest, "assets": {}}
+    def _fake(self, remote=SHA_A, check_raises=None, download_raises=None,
+              versions=("epubveri 0.13.3", "epubveri 0.14.0")):
+        def latest_checksums(timeout=None):
+            if check_raises:
+                raise check_raises
+            return {bin_mod.asset_name(): remote}
 
-        def download_binary(destdir, release=None, verify=True):
+        def download_binary(destdir, expected=None, timeout=None):
             if download_raises:
                 raise download_raises
-            self.calls.append(("download", (release or {}).get("version")))
-            return plugin._binary_path()
+            # The real one fetches SHA256SUMS.txt itself when the caller has
+            # no expectation - the first install - and returns the hash it
+            # verified against either way. A fake that echoed `expected` would
+            # model that wrong and let a first-install bug through.
+            sha = expected if expected is not None else remote
+            self.downloads.append(sha)
+            return plugin._binary_path(), sha
 
-        bin_mod.latest_release = latest_release
+        seen = iter(versions)
+        bin_mod.latest_checksums = latest_checksums
         bin_mod.download_binary = download_binary
-        runner.binary_version = lambda b, timeout=15: current
+        runner.binary_version = lambda b, timeout=15: next(seen, versions[-1])
 
-    def test_a_newer_release_is_fetched_and_announced(self):
-        self._fake(latest="0.14.0", current="epubveri 0.13.3+abc")
-        bk = FakeBk({"last_update_check": None})
-        path, note = plugin._ensure_binary(bk)
-        self.assertEqual(self.calls, [("download", "0.14.0")])
+    def test_a_changed_checksum_is_fetched_and_announced(self):
+        self._fake(remote=self.SHA_B)
+        bk = FakeBk({"last_update_check": None, "installed_sha256": self.SHA_A})
+        _path, note = plugin._ensure_binary(bk)
+        self.assertEqual(self.downloads, [self.SHA_B])
         self.assertEqual(note, "updated epubveri 0.13.3 to 0.14.0")
+        # The new hash is stored, or the next check downloads it again.
+        self.assertEqual(bk.prefs["installed_sha256"], self.SHA_B)
 
-    def test_the_same_version_is_not_re_downloaded(self):
-        # `0.13.3` and `0.13.3+353c51a` are one release; comparing the strings
-        # would call one an update of the other on every check, for ever.
-        self._fake(latest="0.13.3", current="epubveri 0.13.3+353c51a")
-        _path, note = plugin._ensure_binary(FakeBk({"last_update_check": None}))
-        self.assertEqual(self.calls, [])
+    def test_an_unchanged_checksum_downloads_nothing(self):
+        self._fake(remote=self.SHA_A)
+        _path, note = plugin._ensure_binary(
+            FakeBk({"last_update_check": None, "installed_sha256": self.SHA_A}))
+        self.assertEqual(self.downloads, [], "1.1 MB fetched for nothing")
         self.assertIsNone(note)
 
-    def test_an_older_release_is_never_installed_over_a_newer_one(self):
-        self._fake(latest="0.9.10", current="epubveri 0.13.3")
-        plugin._ensure_binary(FakeBk({"last_update_check": None}))
-        self.assertEqual(self.calls, [])
-
-    def test_it_checks_once_a_day_and_not_once_a_run(self):
-        self._fake()
-        recent = FakeBk()          # seeded with "checked just now"
+    def test_it_checks_once_an_hour_and_not_once_a_run(self):
+        self._fake(remote=self.SHA_B)
+        recent = FakeBk({"installed_sha256": self.SHA_A})   # checked just now
         plugin._ensure_binary(recent)
-        self.assertEqual(self.calls, [], "checked again within the interval")
+        self.assertEqual(self.downloads, [], "checked again within the hour")
 
-        old = datetime.utcnow() - timedelta(days=2)
-        stale = FakeBk({"last_update_check": old.isoformat()})
+        old = datetime.utcnow() - timedelta(hours=2)
+        stale = FakeBk({"last_update_check": old.isoformat(),
+                        "installed_sha256": self.SHA_A})
         plugin._ensure_binary(stale)
-        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(len(self.downloads), 1)
 
-    def test_a_failed_check_neither_raises_nor_retries_every_run(self):
-        for raiser in ({"release_raises": OSError("no network")},
+    def test_a_failure_neither_raises_nor_retries_every_run(self):
+        for raiser in ({"check_raises": OSError("no network")},
                        {"download_raises": OSError("disk full")}):
-            self.calls = []
-            self._fake(**raiser)
-            bk = FakeBk({"last_update_check": None})
+            self.downloads = []
+            self._fake(remote=self.SHA_B, **raiser)
+            bk = FakeBk({"last_update_check": None,
+                         "installed_sha256": self.SHA_A})
             path, note = plugin._ensure_binary(bk)   # must not raise
             self.assertIsNotNone(path, "validation must continue")
             self.assertIsNone(note)
             # The attempt is recorded, so an offline machine makes one failed
-            # request a day rather than one per validation.
+            # request an hour rather than one per book.
             self.assertTrue(bk.prefs.get("last_update_check"))
+            # ...and a failed download must not claim the new hash is installed.
+            self.assertEqual(bk.prefs["installed_sha256"], self.SHA_A)
 
     def test_an_unreadable_timestamp_is_treated_as_never_checked(self):
-        self._fake()
-        plugin._ensure_binary(FakeBk({"last_update_check": "not a date"}))
-        self.assertEqual(len(self.calls), 1)
+        self._fake(remote=self.SHA_B)
+        plugin._ensure_binary(FakeBk({"last_update_check": "not a date",
+                                      "installed_sha256": self.SHA_A}))
+        self.assertEqual(len(self.downloads), 1)
+
+    def test_the_first_install_stores_its_checksum(self):
+        self._fake(remote=self.SHA_B)
+        missing = os.path.join(os.path.dirname(__file__), "no-such-binary")
+        plugin._binary_path = lambda: missing
+        bk = FakeBk()
+        _path, note = plugin._ensure_binary(bk)
+        self.assertEqual(note, "installed epubveri")
+        self.assertEqual(bk.prefs["installed_sha256"], self.SHA_B)
 
 
 class PackageTests(unittest.TestCase):

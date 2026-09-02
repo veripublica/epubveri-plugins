@@ -93,11 +93,25 @@ def _binary_path():
     return os.path.join(_plugin_dir(), bin_mod.binary_filename())
 
 
-#: How often to look for a newer epubveri. Daily rather than weekly because
-#: this project ships often and almost every recent release fixed a *wrong
-#: error* on a valid book — a stale binary keeps showing its user something we
-#: already know is not true.
-_UPDATE_INTERVAL = timedelta(days=1)
+#: How often to look for a newer epubveri.
+#:
+#: **One hour, not one day, because the check now costs 842 bytes.** It reads
+#: the release's `SHA256SUMS.txt` and compares one line with the hash it stored
+#: when it installed — no GitHub API (31 KB of JSON, and rate-limited), no
+#: `epubveri -V` process. Comparing hashes is also stricter than comparing
+#: version numbers: it notices an archive re-uploaded under the same tag, and a
+#: local copy that has been corrupted or replaced.
+#:
+#: **Not on every run**, and that is the one thing worth arguing about. A
+#: validation answers in well under a second; putting a network round trip in
+#: front of every one of them means that on a bad link every book waits for the
+#: timeout. An hour is short enough that a fix shipped this morning reaches the
+#: user this morning.
+_UPDATE_INTERVAL = timedelta(hours=1)
+
+#: The check gets a short one of its own. It is optional work, so it must fail
+#: fast; the download that follows keeps the longer default because it is not.
+_CHECK_TIMEOUT = 5
 
 
 def _ensure_binary(bk):
@@ -108,29 +122,26 @@ def _ensure_binary(bk):
     **Updates are silent and automatic, and there is no prompt because there is
     nowhere to put one** — Sigil gives a plugin no settings screen and a
     validation run must not open dialogs. What makes that acceptable rather
-    than presumptuous: every download is verified against the release's
-    `SHA256SUMS.txt` before it is run, and the only thing a newer epubveri
-    changes is that it is right more often.
+    than presumptuous: nothing is run before its checksum matches what the
+    release publishes, and the only thing a newer epubveri does is be right
+    more often.
 
     **Nothing here may stop a validation.** A failed check leaves the binary
     that is already there and records the attempt, so a machine with no network
-    does one failed request a day rather than one per validation.
+    makes one failed request an hour rather than one per book.
     """
     path = _binary_path()
     prefs = bk.getPrefs()
 
-    def stamp():
+    def remember(sha):
+        prefs["installed_sha256"] = sha
         prefs["last_update_check"] = datetime.utcnow().isoformat()
         bk.savePrefs(prefs)
 
-    def version_of(binary):
-        parsed = bin_mod.parse_version(runner.binary_version(binary))
-        return ".".join(str(n) for n in parsed) if parsed else "?"
-
     if not os.path.isfile(path):
-        installed = bin_mod.download_binary(_plugin_dir())
-        stamp()
-        return installed, "installed epubveri %s" % version_of(installed)
+        installed, sha = bin_mod.download_binary(_plugin_dir())
+        remember(sha)
+        return installed, "installed epubveri"
 
     last = prefs.get("last_update_check")
     if last:
@@ -140,21 +151,35 @@ def _ensure_binary(bk):
         except ValueError:
             pass                      # unreadable stamp: check now, rewrite it
 
-    stamp()
+    prefs["last_update_check"] = datetime.utcnow().isoformat()
+    bk.savePrefs(prefs)
     try:
-        release = bin_mod.latest_release()
-        latest = bin_mod.parse_version(release.get("version"))
-        current = bin_mod.parse_version(runner.binary_version(path))
-        if latest and current and latest > current:
-            bin_mod.download_binary(_plugin_dir(), release=release)
-            return path, "updated epubveri %s to %s" % (
-                ".".join(str(n) for n in current),
-                ".".join(str(n) for n in latest))
+        sums = bin_mod.latest_checksums(timeout=_CHECK_TIMEOUT)
+        wanted = sums.get(bin_mod.asset_name())
+        if wanted and wanted != prefs.get("installed_sha256"):
+            before = runner.binary_version(path) or ""
+            bin_mod.download_binary(_plugin_dir(), expected=wanted)
+            remember(wanted)
+            after = runner.binary_version(path) or ""
+            return path, _update_note(before, after)
     except Exception:                                  # noqa: BLE001
         # Offline, rate-limited, a changed release layout - none of it is a
         # reason to refuse to validate the book in front of us.
         pass
     return path, None
+
+
+def _update_note(before, after):
+    """"updated epubveri 0.13.3 to 0.13.4", or something honest if either
+    version could not be read."""
+    old = bin_mod.parse_version(before)
+    new = bin_mod.parse_version(after)
+    fmt = lambda v: ".".join(str(n) for n in v) if v else None
+    if old and new and old != new:
+        return "updated epubveri %s to %s" % (fmt(old), fmt(new))
+    if new:
+        return "reinstalled epubveri %s" % fmt(new)
+    return "updated epubveri"
 
 
 def _build_epub(bk, destdir):

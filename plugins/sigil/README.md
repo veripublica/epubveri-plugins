@@ -25,13 +25,21 @@ epubveri's own releases, checks it against that release's `SHA256SUMS.txt`, and
 keeps it beside the plugin. Nothing else is installed, and the plugin zip
 contains no binary. Roughly 3 MB, once.
 
-**After that it keeps itself current.** Once a day it looks for a newer
-epubveri and installs it if there is one, verifying the checksum again before
-running it; the summary line says when it did. There is nothing to click and
-nothing to reinstall — epubveri ships often, and almost every recent release
-fixed a *wrong* error on a valid book, so an old copy is one that keeps telling
-you something untrue. If the machine is offline the check fails quietly and
-the copy you have is used.
+**After that it keeps itself current.** At most once an hour it reads the
+release's `SHA256SUMS.txt` — 842 bytes — and compares one line against the hash
+it stored when it installed. If they differ it fetches the new archive,
+verifies it, and says so in the summary line. There is nothing to click and
+nothing to reinstall.
+
+Comparing checksums rather than version numbers is smaller than asking GitHub's
+API (31 KB of JSON, and rate-limited), and stricter: it also notices an archive
+re-uploaded under the same tag, or a local copy that has been replaced. If the
+machine is offline the check fails quietly and the copy you have is used —
+nothing about updating can stop a validation.
+
+Why it bothers: epubveri ships often, and almost every recent release fixed a
+*wrong* error on a valid book. An old copy is one that keeps telling you
+something untrue.
 
 ## What you will see
 
