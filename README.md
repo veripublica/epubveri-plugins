@@ -10,6 +10,36 @@ already use, so validating a book is a menu item rather than a terminal.
 | `client/` | the shared half: fetching and verifying the binary, and reading epubveri's JSON envelope |
 | `build.py` | produces one installable zip per editor into `dist/` |
 
+## Installing
+
+Download the zip for your editor from
+[**Releases**](https://github.com/veripublica/epubveri-plugins/releases) — not
+from this source tree. Both editors install a plugin **from a zip file**, never
+from a folder: Sigil's file dialog is titled *Select Plugin Zip Archive* and
+accepts `Plugin Files (*.zip)`, and calibre's *Load plugin from file* is the
+same.
+
+- **Sigil** — *Plugins → Manage Plugins → Add Plugin*, pick the zip. The
+  plugin then appears under *Plugins → Validation → epubveri*.
+- On first use it downloads the epubveri binary for your platform from
+  epubveri's own releases and verifies it against that release's
+  `SHA256SUMS.txt`. Nothing else is installed, and no binary is inside the
+  plugin zip.
+
+Building one yourself, if you would rather not take a release:
+
+```
+python3 build.py            # writes dist/sigil_epubveri_v<version>.zip
+python3 build.py sigil      # just that one
+```
+
+`build.py` lives at the root rather than inside `sigil/` because it serves
+every editor and because `client/` is shared: the build **copies** it into each
+package, since a Sigil plugin is a flat folder and a calibre plugin is a zip
+and neither can import a sibling package from elsewhere on disk. That is also
+why nothing in `client/` may import from `sigil/` or `calibre/` — the
+dependency runs one way, and the build only ever copies in that direction.
+
 ## Licensing
 
 **This repository is GPL-3.0-only.** Every folder, including `client/`.
