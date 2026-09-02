@@ -135,9 +135,13 @@ _CHECK_TIMEOUT = 5
 #: machine, or preference — not "keep me on an old validator", which nobody
 #: wants from a tool whose releases are mostly fixes for wrong errors. So the
 #: age line below still appears.
-_UPDATE_KEY = "update"
-_UPDATE_DEFAULT = "yes"
+_UPDATE_KEY = "autoupdate"
+_UPDATE_DEFAULT = True
 
+#: The key is a JSON boolean, so the file reads `"autoupdate": true` and the
+#: change is `false`. Strings are still accepted, because a hand-edited file
+#: gets hand-typed values: someone may well write `"false"`, or `False`.
+#:
 #: The values that mean yes. **Everything else means no**, and the direction
 #: matters more than the list.
 #:
@@ -206,6 +210,33 @@ def _stale_note(prefs, allowed=True):
             "updates" % age.days)
 
 
+def _integrity_failure(path, prefs):
+    """Is the binary on disk still the one whose checksum the release vouched
+    for? Returns a sentence when it is not, otherwise None.
+
+    **Verifying at download time only proves what arrived, not what runs.**
+    Between the two sits everything that can touch a file: a bad sync, a
+    partial disk write, another program, or something worse. The hash of the
+    2.8 MB binary costs 1.8 ms, which is under one percent of a validation, so
+    there is no reason to trust yesterday's answer.
+
+    A missing stored hash is not a failure — it means the plugin was upgraded
+    from a version that did not record one. That is trusted once and recorded,
+    rather than refusing to run a binary that is very probably fine.
+    """
+    stored = prefs.get("binary_sha256")
+    actual = bin_mod.sha256_of(path)
+    if not stored:
+        prefs["binary_sha256"] = actual          # trust once, verify after
+        return None
+    if actual == stored:
+        return None
+    return ("the epubveri binary has changed since it was verified "
+            "(expected %s, found %s). It was not run. Delete it from the "
+            "plugin folder and validate again to reinstall a verified copy."
+            % (stored[:16], actual[:16]))
+
+
 def _install_failure(exc):
     """A sentence a Sigil user can act on.
 
@@ -244,16 +275,21 @@ def _ensure_binary(bk):
     path = _binary_path()
     prefs = bk.getPrefs()
 
-    def remember(sha):
-        prefs["installed_sha256"] = sha
+    def remember(archive_sha, binary_sha):
+        prefs["installed_sha256"] = archive_sha
+        prefs["binary_sha256"] = binary_sha
         prefs["last_update_check"] = _now().isoformat()
         prefs["last_update_success"] = prefs["last_update_check"]
         bk.savePrefs(prefs)
 
     if not os.path.isfile(path):
-        installed, sha = bin_mod.download_binary(_plugin_dir())
-        remember(sha)
+        installed, archive_sha, binary_sha = bin_mod.download_binary(_plugin_dir())
+        remember(archive_sha, binary_sha)
         return installed, "installed epubveri"
+
+    tampered = _integrity_failure(path, prefs)
+    if tampered:
+        return None, tampered
 
     if not _updates_allowed(bk, prefs):
         # Chosen, so nothing is attempted and nothing is said about it. The
@@ -273,8 +309,9 @@ def _ensure_binary(bk):
         bk.savePrefs(prefs)
         if wanted and wanted != prefs.get("installed_sha256"):
             before = runner.binary_version(path) or ""
-            bin_mod.download_binary(_plugin_dir(), expected=wanted)
-            remember(wanted)
+            _p, archive_sha, binary_sha = bin_mod.download_binary(
+                _plugin_dir(), expected=wanted)
+            remember(archive_sha, binary_sha)
             after = runner.binary_version(path) or ""
             return path, _update_note(before, after)
     except Exception:                                  # noqa: BLE001
@@ -411,6 +448,11 @@ def run(bk):
         binary, update_note = _ensure_binary(bk)
     except Exception as exc:                           # noqa: BLE001
         bk.add_result("error", "", -1, _xml_attr(_install_failure(exc)))
+        return -1
+
+    if binary is None:
+        # Integrity check failed. Nothing is executed.
+        bk.add_result("error", "", -1, _xml_attr("epubveri: %s" % update_note))
         return -1
 
     tmpdir = tempfile.mkdtemp(prefix="epubveri-sigil-")

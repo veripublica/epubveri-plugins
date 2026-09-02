@@ -20,6 +20,12 @@ who has used epubcheck.
 2. In Sigil: **Plugins → Manage Plugins → Add Plugin**, choose the zip.
 3. Run it from **Plugins → Validation → epubveri**.
 
+**The binary is verified every time, not only when it arrives.** Its checksum
+is recorded at install and checked before each run — 1.8 ms for 2.8 MB, under
+one percent of a validation. If the file has changed since it was verified the
+plugin says so and **runs nothing**, because verifying at download proves what
+arrived, not what runs.
+
 **On first use it downloads the epubveri binary** for your platform from
 epubveri's own releases, checks it against that release's `SHA256SUMS.txt`, and
 keeps it beside the plugin. Nothing else is installed, and the plugin zip
@@ -94,11 +100,11 @@ everything and judge for yourself.
   and change the line the plugin writes there on its first run:
 
   ```json
-  "update": "yes"      ->      "update": "no"
+  "autoupdate": true      ->      "autoupdate": false
   ```
 
   Nothing is then requested, ever, and nothing is said about it. Anything that
-  is not clearly a yes — `no`, `off`, `0`, `false`, or a typo — is read as no,
+  is not clearly a yes — `false`, `no`, `off`, `0`, or a typo — is read as no,
   because the one thing this switch must never do is use your connection when
   you asked it not to. (The calibre plugin has a checkbox for the same setting.)
 - **After a month offline** the summary adds one line: *"this epubveri is 45

@@ -271,9 +271,21 @@ class UpdateTests(unittest.TestCase):
             # no expectation - the first install - and returns the hash it
             # verified against either way. A fake that echoed `expected` would
             # model that wrong and let a first-install bug through.
+            #
+            # Three values, matching the real signature: the archive hash for
+            # the next update check and the binary's own for the per-run
+            # integrity check. Getting this wrong is how a tuple-unpacking bug
+            # once looked exactly like "there was no update" - the broad
+            # `except` around the check swallows our mistakes as readily as it
+            # swallows a dead network.
             sha = expected if expected is not None else remote
             self.downloads.append(sha)
-            return plugin._binary_path(), sha
+            path = plugin._binary_path()
+            # In the first-install test the path does not exist yet, which is
+            # the whole point of that case.
+            binary_sha = (bin_mod.sha256_of(path) if os.path.isfile(path)
+                          else "c" * 64)
+            return path, sha, binary_sha
 
         seen = iter(versions)
         bin_mod.latest_checksums = latest_checksums
@@ -345,6 +357,52 @@ class UpdateTests(unittest.TestCase):
         plugin._ensure_binary(FakeBk(base))
         return bool(self.downloads)
 
+    def test_a_replaced_binary_is_not_run(self):
+        """Verifying at download proves what arrived, not what runs.
+
+        Between the two sits everything that can touch a file: a bad sync, a
+        partial write, another program, or something worse. Hashing the 2.8 MB
+        binary costs 1.8 ms — under one percent of a validation — so there is
+        no reason to trust yesterday's answer.
+        """
+        import shutil
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        fake_binary = os.path.join(tmp, "epubveri")
+        try:
+            with open(fake_binary, "wb") as handle:
+                handle.write(b"the verified one")
+            good = bin_mod.sha256_of(fake_binary)
+            plugin._binary_path = lambda: fake_binary
+
+            # Unchanged: nothing to say.
+            self.assertIsNone(
+                plugin._integrity_failure(fake_binary, {"binary_sha256": good}))
+
+            # Replaced: named, and the caller must not run it.
+            with open(fake_binary, "wb") as handle:
+                handle.write(b"something else entirely")
+            note = plugin._integrity_failure(fake_binary,
+                                             {"binary_sha256": good})
+            self.assertIsNotNone(note)
+            self.assertIn("has changed since it was verified", note)
+            self.assertIn("was not run", note)
+
+            self._fake(remote=self.SHA_A)
+            path, message = plugin._ensure_binary(FakeBk({
+                "installed_sha256": self.SHA_A, "binary_sha256": good}))
+            self.assertIsNone(path, "a changed binary must not be handed back")
+            self.assertIn("has changed", message)
+
+            # No stored hash means the plugin was upgraded from a version that
+            # did not record one - trusted once and recorded, not refused.
+            prefs = {}
+            self.assertIsNone(plugin._integrity_failure(fake_binary, prefs))
+            self.assertEqual(prefs["binary_sha256"],
+                             bin_mod.sha256_of(fake_binary))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def test_the_key_is_written_into_the_file_with_its_default(self):
         """Sigil has no settings screen, so the JSON is the only place to
         change this — and a key that is merely *honoured* would be invisible
@@ -352,7 +410,7 @@ class UpdateTests(unittest.TestCase):
         self._fake(remote=self.SHA_A)
         bk = FakeBk({"installed_sha256": self.SHA_A, "last_update_check": None})
         plugin._ensure_binary(bk)
-        self.assertEqual(bk.prefs[plugin._UPDATE_KEY], "yes")
+        self.assertIs(bk.prefs[plugin._UPDATE_KEY], True)
 
     def test_anything_that_is_not_clearly_yes_stops_the_network(self):
         """The direction matters more than the list.

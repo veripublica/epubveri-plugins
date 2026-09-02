@@ -134,7 +134,9 @@ def _expected_sha256(checksums_text, name):
     return None
 
 
-def _sha256(path):
+def sha256_of(path):
+    """SHA-256 of a file. 1.8 ms for the 2.8 MB epubveri binary — cheap enough
+    to do on every run, which is what makes verify-once into verify-always."""
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
         for block in iter(lambda: handle.read(1 << 20), b""):
@@ -162,8 +164,9 @@ def parse_version(text):
 def download_binary(destdir, expected=None, timeout=NETWORK_TIMEOUT):
     """Fetch the newest archive, verify it, extract the binary into `destdir`.
 
-    Returns `(path, sha256)`. The hash is what the caller stores: the next
-    check is a string comparison against 842 bytes rather than a download.
+    Returns `(path, archive_sha256, binary_sha256)`. The first is what the next
+    update check compares against 842 bytes rather than downloading; the second
+    is what every run compares the file on disk against.
 
     Raises `DownloadError` with a sentence fit to show a user — the caller has
     no better information to add.
@@ -191,7 +194,7 @@ def download_binary(destdir, expected=None, timeout=NETWORK_TIMEOUT):
 
         # Verified before it is ever extracted, let alone run. This is the
         # only reason a user can trust a binary that arrived over the network.
-        actual = _sha256(archive)
+        actual = sha256_of(archive)
         if actual != expected:
             raise DownloadError(
                 "checksum mismatch for %s: the release lists %s and the "
@@ -222,6 +225,9 @@ def download_binary(destdir, expected=None, timeout=NETWORK_TIMEOUT):
         shutil.copy2(found, target)
         mode = os.stat(target).st_mode
         os.chmod(target, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        return target, expected
+        # The archive's hash proves what arrived; the binary's own hash is what
+        # lets every later run prove that what it is about to execute is still
+        # that same file.
+        return target, expected, sha256_of(target)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)

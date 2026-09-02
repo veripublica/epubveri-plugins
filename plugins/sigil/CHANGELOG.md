@@ -41,7 +41,14 @@ here.
   installed the plugin, and almost every recent epubveri release fixed a wrong
   error on a valid book. A failed check is silent and is recorded, so an
   offline machine makes one failed request an hour rather than one per book.
-- **Updates can be turned off** by changing `"update": "yes"` to `"no"` in
+- **The binary is verified before every run**, not only when it is downloaded.
+  Its checksum is recorded at install and compared each time; if the file has
+  changed the plugin reports it and runs nothing. Verifying at download proves
+  what arrived, and between arriving and running sits everything that can
+  touch a file. 1.8 ms for 2.8 MB, under one percent of a validation. A
+  missing stored hash means an upgrade from a version that recorded none, and
+  is trusted once rather than refused.
+- **Updates can be turned off** by changing `"autoupdate": true` to `false` in
   `plugins_prefs/epubveri/epubveri.json`. The key is **written there on the
   first run** rather than only read, so the file shows that the choice exists —
   Sigil has no settings screen, so a key that were merely honoured would be
