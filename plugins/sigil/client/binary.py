@@ -131,6 +131,23 @@ def _sha256(path):
     return digest.hexdigest()
 
 
+def parse_version(text):
+    """`"epubveri 0.13.3+353c51a"` or `"v0.13.3"` -> `(0, 13, 3)`.
+
+    Build metadata after `+` is dropped: `0.13.3+353c51a` and `0.13.3` are the
+    same release, and comparing the strings would call one an update of the
+    other forever.
+    """
+    if not text:
+        return None
+    token = text.strip().split()[-1].lstrip("vV").split("+")[0]
+    parts = token.split(".")
+    try:
+        return tuple(int(p) for p in parts[:3])
+    except ValueError:
+        return None
+
+
 def download_binary(destdir, release=None, verify=True):
     """Fetch the right archive, verify it, extract the binary into `destdir`.
 

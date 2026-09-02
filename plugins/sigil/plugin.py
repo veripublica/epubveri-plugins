@@ -16,6 +16,7 @@
 import os
 import sys
 import zipfile
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -90,6 +91,70 @@ def _plugin_dir():
 
 def _binary_path():
     return os.path.join(_plugin_dir(), bin_mod.binary_filename())
+
+
+#: How often to look for a newer epubveri. Daily rather than weekly because
+#: this project ships often and almost every recent release fixed a *wrong
+#: error* on a valid book — a stale binary keeps showing its user something we
+#: already know is not true.
+_UPDATE_INTERVAL = timedelta(days=1)
+
+
+def _ensure_binary(bk):
+    """The epubveri binary to use, installing or updating it as needed.
+
+    Returns `(path, note)`; `note` is a sentence for the summary line, or None.
+
+    **Updates are silent and automatic, and there is no prompt because there is
+    nowhere to put one** — Sigil gives a plugin no settings screen and a
+    validation run must not open dialogs. What makes that acceptable rather
+    than presumptuous: every download is verified against the release's
+    `SHA256SUMS.txt` before it is run, and the only thing a newer epubveri
+    changes is that it is right more often.
+
+    **Nothing here may stop a validation.** A failed check leaves the binary
+    that is already there and records the attempt, so a machine with no network
+    does one failed request a day rather than one per validation.
+    """
+    path = _binary_path()
+    prefs = bk.getPrefs()
+
+    def stamp():
+        prefs["last_update_check"] = datetime.utcnow().isoformat()
+        bk.savePrefs(prefs)
+
+    def version_of(binary):
+        parsed = bin_mod.parse_version(runner.binary_version(binary))
+        return ".".join(str(n) for n in parsed) if parsed else "?"
+
+    if not os.path.isfile(path):
+        installed = bin_mod.download_binary(_plugin_dir())
+        stamp()
+        return installed, "installed epubveri %s" % version_of(installed)
+
+    last = prefs.get("last_update_check")
+    if last:
+        try:
+            if datetime.utcnow() - datetime.fromisoformat(last) < _UPDATE_INTERVAL:
+                return path, None
+        except ValueError:
+            pass                      # unreadable stamp: check now, rewrite it
+
+    stamp()
+    try:
+        release = bin_mod.latest_release()
+        latest = bin_mod.parse_version(release.get("version"))
+        current = bin_mod.parse_version(runner.binary_version(path))
+        if latest and current and latest > current:
+            bin_mod.download_binary(_plugin_dir(), release=release)
+            return path, "updated epubveri %s to %s" % (
+                ".".join(str(n) for n in current),
+                ".".join(str(n) for n in latest))
+    except Exception:                                  # noqa: BLE001
+        # Offline, rate-limited, a changed release layout - none of it is a
+        # reason to refuse to validate the book in front of us.
+        pass
+    return path, None
 
 
 def _build_epub(bk, destdir):
@@ -202,15 +267,12 @@ def run(bk):
     import shutil
     import tempfile
 
-    binary = _binary_path()
-
-    if not os.path.isfile(binary):
-        try:
-            binary = bin_mod.download_binary(_plugin_dir())
-        except Exception as exc:                       # noqa: BLE001
-            bk.add_result("error", "", -1, _xml_attr(
-                "epubveri could not be installed: %s" % exc))
-            return -1
+    try:
+        binary, update_note = _ensure_binary(bk)
+    except Exception as exc:                           # noqa: BLE001
+        bk.add_result("error", "", -1, _xml_attr(
+            "epubveri could not be installed: %s" % exc))
+        return -1
 
     tmpdir = tempfile.mkdtemp(prefix="epubveri-sigil-")
     try:
@@ -255,6 +317,8 @@ def run(bk):
         if extra:
             summary += "; also listed: %s — neither affects the verdict" \
                        % ", ".join(extra)
+        if update_note:
+            summary += " [%s]" % update_note
         bk.add_result("info", "", -1, _xml_attr(summary))
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)

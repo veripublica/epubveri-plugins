@@ -25,6 +25,14 @@ epubveri's own releases, checks it against that release's `SHA256SUMS.txt`, and
 keeps it beside the plugin. Nothing else is installed, and the plugin zip
 contains no binary. Roughly 3 MB, once.
 
+**After that it keeps itself current.** Once a day it looks for a newer
+epubveri and installs it if there is one, verifying the checksum again before
+running it; the summary line says when it did. There is nothing to click and
+nothing to reinstall — epubveri ships often, and almost every recent release
+fixed a *wrong* error on a valid book, so an old copy is one that keeps telling
+you something untrue. If the machine is offline the check fails quietly and
+the copy you have is used.
+
 ## What you will see
 
 Findings land in Sigil's validation panel with their file, line and column, so

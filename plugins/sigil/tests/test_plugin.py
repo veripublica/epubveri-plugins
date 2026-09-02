@@ -21,11 +21,14 @@ import os
 import sys
 import unittest
 import zipfile
+from datetime import datetime, timedelta
 
 PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PLUGIN_DIR)
 
 import plugin  # noqa: E402
+from client import binary as bin_mod  # noqa: E402
+from client import runner  # noqa: E402
 
 
 OPF = """<?xml version="1.0" encoding="utf-8"?>
@@ -74,7 +77,11 @@ class FakeBk(object):
     """The four container methods the plugin uses, and nothing else."""
 
     def __init__(self, prefs=None):
-        self.prefs = dict(prefs or {})
+        # Seeded so the daily update check is not due: these tests must not
+        # touch the network, and a test that quietly does is a test that fails
+        # on an aeroplane.
+        self.prefs = {"last_update_check": datetime.utcnow().isoformat()}
+        self.prefs.update(prefs or {})
         self.results = []
 
     def getPrefs(self):
@@ -220,6 +227,93 @@ class ResultXmlTests(unittest.TestCase):
         # more often than double quotes — escaping them would be noise.
         self.assertEqual(plugin._xml_attr("file 'x' is odd"),
                          "file 'x' is odd")
+
+
+class UpdateTests(unittest.TestCase):
+    """The plugin fetches a newer epubveri on its own, once a day.
+
+    Without this a user is pinned to whatever shipped the day they installed —
+    and almost every recent epubveri release fixed a *wrong error on a valid
+    book*, so a stale binary keeps telling its owner something we already know
+    is untrue. Nothing here may stop a validation, so every failure path is
+    checked too.
+    """
+
+    def setUp(self):
+        self.calls = []
+        self._orig = (bin_mod.latest_release, bin_mod.download_binary,
+                      runner.binary_version, plugin._binary_path)
+        plugin._binary_path = lambda: __file__      # any existing file
+
+    def tearDown(self):
+        (bin_mod.latest_release, bin_mod.download_binary,
+         runner.binary_version, plugin._binary_path) = self._orig
+
+    def _fake(self, latest="0.14.0", current="epubveri 0.13.3+abc",
+              release_raises=None, download_raises=None):
+        def latest_release():
+            if release_raises:
+                raise release_raises
+            return {"version": latest, "tag": "v" + latest, "assets": {}}
+
+        def download_binary(destdir, release=None, verify=True):
+            if download_raises:
+                raise download_raises
+            self.calls.append(("download", (release or {}).get("version")))
+            return plugin._binary_path()
+
+        bin_mod.latest_release = latest_release
+        bin_mod.download_binary = download_binary
+        runner.binary_version = lambda b, timeout=15: current
+
+    def test_a_newer_release_is_fetched_and_announced(self):
+        self._fake(latest="0.14.0", current="epubveri 0.13.3+abc")
+        bk = FakeBk({"last_update_check": None})
+        path, note = plugin._ensure_binary(bk)
+        self.assertEqual(self.calls, [("download", "0.14.0")])
+        self.assertEqual(note, "updated epubveri 0.13.3 to 0.14.0")
+
+    def test_the_same_version_is_not_re_downloaded(self):
+        # `0.13.3` and `0.13.3+353c51a` are one release; comparing the strings
+        # would call one an update of the other on every check, for ever.
+        self._fake(latest="0.13.3", current="epubveri 0.13.3+353c51a")
+        _path, note = plugin._ensure_binary(FakeBk({"last_update_check": None}))
+        self.assertEqual(self.calls, [])
+        self.assertIsNone(note)
+
+    def test_an_older_release_is_never_installed_over_a_newer_one(self):
+        self._fake(latest="0.9.10", current="epubveri 0.13.3")
+        plugin._ensure_binary(FakeBk({"last_update_check": None}))
+        self.assertEqual(self.calls, [])
+
+    def test_it_checks_once_a_day_and_not_once_a_run(self):
+        self._fake()
+        recent = FakeBk()          # seeded with "checked just now"
+        plugin._ensure_binary(recent)
+        self.assertEqual(self.calls, [], "checked again within the interval")
+
+        old = datetime.utcnow() - timedelta(days=2)
+        stale = FakeBk({"last_update_check": old.isoformat()})
+        plugin._ensure_binary(stale)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_a_failed_check_neither_raises_nor_retries_every_run(self):
+        for raiser in ({"release_raises": OSError("no network")},
+                       {"download_raises": OSError("disk full")}):
+            self.calls = []
+            self._fake(**raiser)
+            bk = FakeBk({"last_update_check": None})
+            path, note = plugin._ensure_binary(bk)   # must not raise
+            self.assertIsNotNone(path, "validation must continue")
+            self.assertIsNone(note)
+            # The attempt is recorded, so an offline machine makes one failed
+            # request a day rather than one per validation.
+            self.assertTrue(bk.prefs.get("last_update_check"))
+
+    def test_an_unreadable_timestamp_is_treated_as_never_checked(self):
+        self._fake()
+        plugin._ensure_binary(FakeBk({"last_update_check": "not a date"}))
+        self.assertEqual(len(self.calls), 1)
 
 
 class PackageTests(unittest.TestCase):
