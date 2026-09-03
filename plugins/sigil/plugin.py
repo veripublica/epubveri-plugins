@@ -681,13 +681,23 @@ def run(bk):
             summary += "; %s hidden by your settings" % ", ".join(hidden)
         if update_note:
             summary += " [%s]" % update_note
-        # `show_summary: false` suppresses this line — unless it would leave
-        # the panel completely empty. Sigil starts this plugin on its own
-        # (`<autostart>true</autostart>`), so an empty panel is the same thing
-        # a plugin that failed to run produces, and "your book is clean" is
-        # the one message that would be lost by staying quiet.
-        if show["summary"] or counts["shown"] == 0:
+        # `show_summary: false` keeps the line out of the results table and
+        # prints it instead of dropping it.
+        #
+        # The first version of this kept the line as a *result* when the panel
+        # would otherwise be empty, on the grounds that Sigil starts this
+        # plugin on its own and an empty panel is what a plugin that failed to
+        # run produces. The concern was right and the mechanism was wrong: a
+        # summary row is a row like any other, and a clean book in an
+        # automation is exactly when that fallback fired. DiapDealer's advice
+        # (MobileRead 374939 #26) is the better shape — print it before
+        # returning control. `<msg>` reaches the plugin's output window on
+        # both paths, so "your book is clean" survives while the results
+        # table stays empty for whoever counts rows.
+        if show["summary"]:
             bk.add_result("info", _NO_FILE, -1, _xml_attr(summary))
+        else:
+            print(summary)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
     return 0

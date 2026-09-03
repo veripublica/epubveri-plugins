@@ -35,10 +35,13 @@ Both from Doitsu, MobileRead 374939 #21.
     because a reader who mistypes `flase` and is silently given less than the
     validator found has no way to notice.
 
-  `show_summary: false` has one exception: the line is written anyway when
-  there would otherwise be nothing in the panel. Sigil starts this plugin on
-  its own, so an empty panel is indistinguishable from a plugin that failed to
-  run, and "your book is clean" is the one message worth not losing.
+  `show_summary: false` does not drop the line, it moves it: out of the
+  results table and into the plugin's output window. Sigil starts this plugin
+  on its own, so a table with nothing in it is what a plugin that failed to
+  run produces, and "your book is clean" is worth not losing — but it does not
+  have to be a *row* to be said, and a row is what anything counting results
+  will count. DiapDealer's advice in MobileRead 374939 #26, and it answers
+  BeckyEbook (#25) in the same move.
 
 - **When the plugin cannot run, it now says why where the message survives.**
   Five paths report a problem and return non-zero — no binary, a failed

@@ -139,10 +139,10 @@ where anything unclear is read as *no*: there the switch spends your
 connection, so a misread must not use it; here the switch hides findings, so a
 misread must not hide them.
 
-`show_summary: false` has one exception: if there is nothing else in the panel,
-the summary is written anyway. Sigil runs this plugin on its own, and an empty
-panel is exactly what a plugin that failed to run produces — "your book is
-clean" is the one message worth not losing.
+`show_summary: false` does not throw the line away, it moves it to the
+plugin's output window. The results table stays empty, which is what you want
+if something downstream counts rows, and you can still see that the plugin ran
+and what it decided.
 
 ## If something goes wrong
 

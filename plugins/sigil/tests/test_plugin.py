@@ -839,22 +839,40 @@ class DisplaySettingsTests(unittest.TestCase):
             self.assertFalse([t for t in texts if t.startswith("USAGE ")],
                              "%r did not hide" % (off,))
 
-    def test_show_summary_false_drops_the_line(self):
-        _bk, texts = self._run({"show_summary": False})
+    def _run_capturing(self, bk):
+        import contextlib
+        import io as _io
+        out = _io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(plugin.run(bk), 0)
+        return [r[4] for r in bk.results], out.getvalue()
+
+    def test_show_summary_false_keeps_the_line_out_of_the_results(self):
+        texts, _out = self._run_capturing(FakeBk({"show_summary": False}))
         self.assertTrue(texts, "the findings went with the summary")
         self.assertFalse([t for t in texts if t.startswith("epubveri ")], texts)
 
-    def test_show_summary_false_still_speaks_when_nothing_else_would(self):
-        """Sigil starts this plugin on its own, so an empty panel is exactly
-        what a plugin that failed to run produces. "Your book is clean" is the
-        one message that would be lost by staying quiet."""
-        bk, texts = self._run(bk=CleanBk({"show_summary": False,
-                                          "show_usage": False,
-                                          "show_advisory": False}))
-        self.assertEqual(len(texts), 1, texts)
-        self.assertTrue(texts[0].startswith("epubveri "), texts)
-        self.assertIn("VALID", texts[0])
-        self.assertIn("hidden by your settings", texts[0])
+    def test_show_summary_false_prints_it_rather_than_dropping_it(self):
+        """Sigil starts this plugin on its own, so a table with nothing in it
+        is what a plugin that failed to run produces. The line still has to be
+        said — just not as a row, because a row is what anything counting
+        results will count. DiapDealer, MobileRead 374939 #26: print it before
+        returning control.
+        """
+        texts, out = self._run_capturing(CleanBk({"show_summary": False,
+                                                  "show_usage": False,
+                                                  "show_advisory": False}))
+        self.assertEqual(texts, [], "the table has to be empty")
+        self.assertTrue(out.startswith("epubveri "), out)
+        self.assertIn("VALID", out)
+        self.assertIn("hidden by your settings", out)
+
+    def test_the_summary_is_in_one_place_at_a_time(self):
+        """Never both: a line that is a row and a print is a line reported
+        twice to anyone reading both."""
+        texts, out = self._run_capturing(FakeBk())
+        self.assertTrue([t for t in texts if t.startswith("epubveri ")], texts)
+        self.assertNotIn("error(s)", out, out)
 
 
 @unittest.skipIf(_binary() is None, "set EPUBVERI_BINARY")
