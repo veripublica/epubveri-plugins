@@ -134,6 +134,21 @@ def _binary():
     return path if os.path.isfile(path) else None
 
 
+def run_capturing(bk):
+    """`(result texts, stdout)`.
+
+    The summary is printed rather than added, so every test that reads it has
+    to read standard output. Sigil collects it the same way — `SavedStream`
+    into the launcher's `<msg>`.
+    """
+    import contextlib
+    import io as _io
+    out = _io.StringIO()
+    with contextlib.redirect_stdout(out):
+        code = plugin.run(bk)
+    return code, [r[4] for r in bk.results], out.getvalue()
+
+
 class BuildEpubTests(unittest.TestCase):
     def test_the_container_we_build_is_a_valid_ocf_zip(self):
         import shutil
@@ -641,15 +656,17 @@ class RunTests(unittest.TestCase):
     def tearDown(self):
         plugin._binary_path = self._orig
 
-    def test_findings_carry_a_full_bookpath_and_a_summary_is_added(self):
+    def test_findings_carry_a_full_bookpath_and_the_summary_is_printed(self):
         bk = FakeBk()
-        self.assertEqual(plugin.run(bk), 0)
+        code, texts, out = run_capturing(bk)
+        self.assertEqual(code, 0)
         self.assertTrue(bk.results, "the run produced nothing")
-        summary = bk.results[-1]
-        self.assertEqual(summary[0], "info")
-        self.assertIn("epubveri", summary[4])
-        self.assertIn("NOT VALID", summary[4],
-                      "the book has an empty dc:creator")
+        self.assertIn("epubveri", out)
+        # And not in the table: a result is how Sigil is told the book has a
+        # problem, which is why Automation aborts a list on any of them.
+        self.assertFalse([t for t in texts if t.startswith("epubveri ")],
+                         texts)
+        self.assertIn("NOT VALID", out, "the book has an empty dc:creator")
         # The empty dc:creator, reported against the package document by its
         # full path rather than "content.opf".
         creators = [r for r in bk.results if "dc:creator" in r[4]]
@@ -666,8 +683,8 @@ class RunTests(unittest.TestCase):
         sentence that keeps it from reading as the two tools disagreeing.
         """
         bk = FakeBk()
-        self.assertEqual(plugin.run(bk), 0)
-        texts = [r[4] for r in bk.results]
+        code, texts, _out = run_capturing(bk)
+        self.assertEqual(code, 0)
 
         # The unreferenced Misc/spare.xml: a usage note, previously hidden.
         self.assertTrue(any("USAGE OPF-097" in t for t in texts), texts)
@@ -680,9 +697,7 @@ class RunTests(unittest.TestCase):
         self.assertTrue(any(t.startswith("ERROR RSC-005") for t in texts), texts)
 
     def test_the_summary_separates_what_decides_the_verdict(self):
-        bk = FakeBk()
-        plugin.run(bk)
-        summary = bk.results[-1][4]
+        _code, _texts, summary = run_capturing(FakeBk())
         # Errors and warnings decide it; the rest is listed as not deciding it.
         self.assertIn("2 error(s)", summary)
         self.assertIn("1 usage note(s)", summary)
@@ -698,8 +713,7 @@ class RunTests(unittest.TestCase):
         VALID for reasons that have nothing to do with the advisory, and the
         advisory must not be among the counted errors."""
         bk = FakeBk()
-        plugin.run(bk)
-        summary = bk.results[-1][4]
+        _code, _texts, summary = run_capturing(bk)
         self.assertIn("NOT VALID", summary)
         errors = [r for r in bk.results if r[0] == "error"]
         self.assertFalse([r for r in errors if "ADVISORY" in r[4]],
@@ -715,7 +729,7 @@ class RunTests(unittest.TestCase):
         places, so this asserts over every result the run produces.
         """
         bk = FakeBk()
-        plugin.run(bk)
+        run_capturing(bk)
         self.assertTrue(bk.results)
         self.assertFalse([r for r in bk.results if r[1] == ""],
                          "an empty bookpath reaches Sigil's result table")
@@ -775,8 +789,9 @@ class DisplaySettingsTests(unittest.TestCase):
 
     def _run(self, prefs=None, bk=None):
         bk = bk or FakeBk(prefs)
-        self.assertEqual(plugin.run(bk), 0)
-        return bk, [r[4] for r in bk.results]
+        code, texts, self.out = run_capturing(bk)
+        self.assertEqual(code, 0)
+        return bk, texts
 
     def test_the_switches_are_written_into_the_file_on_first_run(self):
         """The JSON is the only place they can be changed, so it has to be the
@@ -808,8 +823,8 @@ class DisplaySettingsTests(unittest.TestCase):
         defects on record whose only symptom was silence, and a settings-driven
         silence is the same shape. It is also the only way a Sigil user can
         discover that a switch exists at all."""
-        _bk, texts = self._run({"show_usage": False, "show_advisory": False})
-        summary = texts[-1]
+        self._run({"show_usage": False, "show_advisory": False})
+        summary = self.out
         self.assertIn("1 usage note(s)", summary)
         self.assertIn("1 advisory finding(s) epubcheck does not make", summary)
         self.assertIn("hidden by your settings", summary)
@@ -819,13 +834,13 @@ class DisplaySettingsTests(unittest.TestCase):
         """`-u --advisory` go on every run whatever the settings say, so the
         numbers describe the book and not the preferences. Compare the two
         summaries: the same counts, differently placed."""
-        _shown, shown_texts = self._run()
-        _hidden, hidden_texts = self._run({"show_usage": False,
-                                           "show_advisory": False})
+        self._run()
+        shown = self.out
+        self._run({"show_usage": False, "show_advisory": False})
         for fragment in ("2 error(s)", "1 usage note(s)",
                          "1 advisory finding(s)"):
-            self.assertIn(fragment, shown_texts[-1])
-            self.assertIn(fragment, hidden_texts[-1])
+            self.assertIn(fragment, shown)
+            self.assertIn(fragment, self.out)
 
     def test_an_unrecognised_value_shows_rather_than_hides(self):
         """The direction, and it is the opposite of `autoupdate`'s.
@@ -848,40 +863,41 @@ class DisplaySettingsTests(unittest.TestCase):
             self.assertFalse([t for t in texts if t.startswith("USAGE ")],
                              "%r did not hide" % (off,))
 
-    def _run_capturing(self, bk):
-        import contextlib
-        import io as _io
-        out = _io.StringIO()
-        with contextlib.redirect_stdout(out):
-            self.assertEqual(plugin.run(bk), 0)
-        return [r[4] for r in bk.results], out.getvalue()
-
-    def test_show_summary_false_keeps_the_line_out_of_the_results(self):
-        texts, _out = self._run_capturing(FakeBk({"show_summary": False}))
+    def test_show_summary_false_says_nothing_anywhere(self):
+        """The only switch that removes something outright. It can, because
+        the line was never load-bearing: Sigil writes "Validation Tool
+        Reported No Problems Found" into an empty panel by itself."""
+        _bk, texts = self._run({"show_summary": False})
         self.assertTrue(texts, "the findings went with the summary")
-        self.assertFalse([t for t in texts if t.startswith("epubveri ")], texts)
+        self.assertNotIn("epubveri ", self.out)
 
-    def test_show_summary_false_prints_it_rather_than_dropping_it(self):
-        """Sigil starts this plugin on its own, so a table with nothing in it
-        is what a plugin that failed to run produces. The line still has to be
-        said — just not as a row, because a row is what anything counting
-        results will count. DiapDealer, MobileRead 374939 #26: print it before
-        returning control.
+    def test_a_clean_book_leaves_the_results_table_empty(self):
+        """The one that matters to an automation list, and the regression
+        this whole shape exists to prevent.
+
+        Sigil's Automation has three outcomes for a validation plugin, named
+        in its own binary: "Validation Tool Reported No Problems Found",
+        "Aborted due to Validation Errors", "Ignored Validation Errors". Zero
+        results is the first and **one result of any severity is the second**,
+        `info` included. A summary row therefore stopped every automation list
+        containing this plugin, on every book, clean ones included — DNSB,
+        MobileRead 374939 #23 and #29, confirmed by BeckyEbook in #28 by
+        removing the line.
         """
-        texts, out = self._run_capturing(CleanBk({"show_summary": False,
-                                                  "show_usage": False,
-                                                  "show_advisory": False}))
-        self.assertEqual(texts, [], "the table has to be empty")
-        self.assertTrue(out.startswith("epubveri "), out)
-        self.assertIn("VALID", out)
-        self.assertIn("hidden by your settings", out)
+        _bk, texts = self._run(bk=CleanBk({"show_usage": False,
+                                           "show_advisory": False}))
+        self.assertEqual(texts, [], "an automation list would abort on these")
+        self.assertIn("VALID", self.out)
+        self.assertIn("hidden by your settings", self.out)
 
-    def test_the_summary_is_in_one_place_at_a_time(self):
-        """Never both: a line that is a row and a print is a line reported
-        twice to anyone reading both."""
-        texts, out = self._run_capturing(FakeBk())
-        self.assertTrue([t for t in texts if t.startswith("epubveri ")], texts)
-        self.assertNotIn("error(s)", out, out)
+    def test_the_summary_is_never_a_result_whatever_the_settings(self):
+        """A result is how Sigil is told the book has a problem. There is no
+        setting under which the summary should be one."""
+        for prefs in ({}, {"show_summary": True}, {"show_usage": False},
+                      {"show_advisory": False}):
+            _bk, texts = self._run(dict(prefs))
+            self.assertFalse([t for t in texts if t.startswith("epubveri ")],
+                             "%r put the summary in the table" % (prefs,))
 
 
 @unittest.skipIf(_binary() is None, "set EPUBVERI_BINARY")
@@ -901,9 +917,7 @@ class PluginVersionTests(unittest.TestCase):
         """epubveri's says which validator produced the findings; the
         plugin's says which code turned them into rows, and most of the
         defects found so far were on this side of that line."""
-        bk = FakeBk()
-        plugin.run(bk)
-        summary = bk.results[-1][4]
+        _code, _texts, summary = run_capturing(FakeBk())
         self.assertIn("(plugin %s)" % plugin._plugin_version(), summary)
 
     def test_an_unreadable_plugin_xml_gives_no_version_rather_than_a_wrong_one(self):
@@ -997,8 +1011,8 @@ class ExitCodeTests(unittest.TestCase):
     def test_a_completed_validation_returns_zero_however_the_book_is(self):
         """Valid or not, the plugin did its job. The verdict belongs in the
         panel; the return value says whether epubveri ran."""
-        self.assertEqual(plugin.run(FakeBk()), 0, "an invalid book")
-        self.assertEqual(plugin.run(CleanBk()), 0, "a clean book")
+        self.assertEqual(run_capturing(FakeBk())[0], 0, "an invalid book")
+        self.assertEqual(run_capturing(CleanBk())[0], 0, "a clean book")
 
     def test_a_failure_says_why_on_stdout_where_it_survives(self):
         """The reason must not be an add_result and nothing else: on a
@@ -1023,6 +1037,34 @@ class ExitCodeTests(unittest.TestCase):
                       "the reason never left the results table")
         self.assertTrue(out.getvalue().startswith("epubveri"),
                         out.getvalue())
+
+
+@unittest.skipIf(_binary() is None, "set EPUBVERI_BINARY")
+class SuiteHygieneTests(unittest.TestCase):
+    def test_no_test_lets_the_plugins_output_escape(self):
+        """The summary and every failure reason are printed now, so a test
+        that calls `run` without capturing writes into the suite's own output.
+        Three did, and the noise is indistinguishable from a real message —
+        which is the whole reason those lines are printed in the first place.
+        """
+        import contextlib
+        import io as _io
+        import unittest as _ut
+
+        loader = _ut.TestLoader()
+        suite = _ut.TestSuite()
+        for group in loader.loadTestsFromModule(sys.modules[__name__]):
+            for case in group:
+                # Itself excluded by identity, not by name: a filter that
+                # matches on a string is one rename away from recursing.
+                if type(case) is not SuiteHygieneTests:
+                    suite.addTest(case)
+        out, err = _io.StringIO(), _io.StringIO()
+        with contextlib.redirect_stdout(out):
+            _ut.TextTestRunner(stream=err, verbosity=0).run(suite)
+        self.assertEqual(out.getvalue(), "",
+                         "a test printed instead of capturing:\n"
+                         + out.getvalue()[:400])
 
 
 if __name__ == "__main__":

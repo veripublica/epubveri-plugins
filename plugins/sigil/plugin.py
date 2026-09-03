@@ -681,22 +681,32 @@ def run(bk):
             summary += "; %s hidden by your settings" % ", ".join(hidden)
         if update_note:
             summary += " [%s]" % update_note
-        # `show_summary: false` keeps the line out of the results table and
-        # prints it instead of dropping it.
+        # **The summary is never a result. It is printed.**
         #
-        # The first version of this kept the line as a *result* when the panel
-        # would otherwise be empty, on the grounds that Sigil starts this
-        # plugin on its own and an empty panel is what a plugin that failed to
-        # run produces. The concern was right and the mechanism was wrong: a
-        # summary row is a row like any other, and a clean book in an
-        # automation is exactly when that fallback fired. DiapDealer's advice
-        # (MobileRead 374939 #26) is the better shape — print it before
-        # returning control. `<msg>` reaches the plugin's output window on
-        # both paths, so "your book is clean" survives while the results
-        # table stays empty for whoever counts rows.
+        # A validation result is not a neutral place to put a sentence: it is
+        # how Sigil is told the book has a problem. `Automation` has exactly
+        # three outcomes for a validation plugin, and its own strings say so —
+        # "Validation Tool Reported No Problems Found", "Aborted due to
+        # Validation Errors", "Ignored Validation Errors". Zero results is the
+        # first; **one result of any severity is the second**, `info`
+        # included. So a summary row stopped every automation list that
+        # contained this plugin, on every book, including the clean ones.
+        # Reported by DNSB (MobileRead 374939 #23, #29) and confirmed by
+        # BeckyEbook, who tried removing the line (#28).
+        #
+        # Two earlier shapes were wrong for one shared reason. Both kept the
+        # line as a *row* on a clean book, to avoid an empty panel that would
+        # look like a plugin which had failed to run. **That panel is not
+        # empty**: Sigil writes "Validation Tool Reported No Problems Found"
+        # into it. The premise was never checked, and everything built on it
+        # was answering a problem Sigil had already solved.
+        #
+        # Printing loses nothing. `<msg>` reaches the plugin's output window on
+        # both the success and the failure path, which is where `_fail` puts
+        # its reasons for the same reason. DiapDealer said this in #26 and
+        # DNSB in #29: the errors are in the results box, the summary belongs
+        # somewhere that is not a finding.
         if show["summary"]:
-            bk.add_result("info", _NO_FILE, -1, _xml_attr(summary))
-        else:
             print(summary)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)

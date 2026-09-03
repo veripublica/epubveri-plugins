@@ -118,7 +118,7 @@ the file shows you which choices exist:
 |---|---|
 | `show_usage` | `USAGE` lines are not listed |
 | `show_advisory` | `ADVISORY` lines are not listed |
-| `show_summary` | the last line is not written |
+| `show_summary` | the summary is not printed either |
 | `autoupdate` | nothing is ever requested over the network |
 
 Three things are worth knowing before you change any of them.
@@ -139,10 +139,13 @@ where anything unclear is read as *no*: there the switch spends your
 connection, so a misread must not use it; here the switch hides findings, so a
 misread must not hide them.
 
-`show_summary: false` does not throw the line away, it moves it to the
-plugin's output window. The results table stays empty, which is what you want
-if something downstream counts rows, and you can still see that the plugin ran
-and what it decided.
+**The summary is not a finding, so it is not in the results table** — it goes
+to the plugin's output window. That is not cosmetic: a validation result is
+how Sigil is told the book has a problem, so an automation list aborts on any
+of them. A summary row would stop every list this plugin is in, on every book.
+Sigil fills an empty results table with "Validation Tool Reported No Problems
+Found" by itself, so nothing is lost. `show_summary: false` silences the
+printed line too.
 
 ## If something goes wrong
 

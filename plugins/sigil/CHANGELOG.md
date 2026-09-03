@@ -35,13 +35,35 @@ Both from Doitsu, MobileRead 374939 #21.
     because a reader who mistypes `flase` and is silently given less than the
     validator found has no way to notice.
 
-  `show_summary: false` does not drop the line, it moves it: out of the
-  results table and into the plugin's output window. Sigil starts this plugin
-  on its own, so a table with nothing in it is what a plugin that failed to
-  run produces, and "your book is clean" is worth not losing — but it does not
-  have to be a *row* to be said, and a row is what anything counting results
-  will count. DiapDealer's advice in MobileRead 374939 #26, and it answers
-  BeckyEbook (#25) in the same move.
+  `show_summary` governs whether the line is said at all. **The summary is
+  never a validation result now — it is printed**, whatever the settings say;
+  see the next entry, which is the reason.
+
+- **The summary is no longer a validation result, and this fixes automation
+  lists.** DNSB reported that swapping epubcheck for this plugin made an
+  automation error on every run, clean books included (MobileRead 374939 #23,
+  #29); BeckyEbook gave the repro and confirmed that removing the summary line
+  is exactly what stops it (#28).
+
+  A validation result is not a neutral place to put a sentence: it is how
+  Sigil is told the book has a problem. Automation has three outcomes for a
+  validation plugin, named in Sigil's own binary — "Validation Tool Reported
+  No Problems Found", "Aborted due to Validation Errors", "Ignored Validation
+  Errors". Zero results is the first, and **one result of any severity is the
+  second**, `info` included. So the summary row aborted every automation list
+  this plugin was in, on every book.
+
+  It is printed instead, which is where the plugin's output window reads from.
+  DiapDealer had already said it in #26 and DNSB says it again in #29: the
+  errors are in the results box, so the summary belongs somewhere that is not
+  a finding.
+
+  **Two earlier attempts at this were wrong for one shared reason, and it was
+  a fact nobody had checked.** Both kept the line as a row on a clean book, to
+  avoid an empty panel that would look like a plugin which had failed to run.
+  That panel is not empty — Sigil writes "Validation Tool Reported No Problems
+  Found" into it by itself. Everything built on that premise was answering a
+  problem Sigil had already solved.
 
 - **When the plugin cannot run, it now says why where the message survives.**
   Five paths report a problem and return non-zero — no binary, a failed
