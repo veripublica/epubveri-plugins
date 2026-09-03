@@ -5,12 +5,14 @@ specification with [epubveri](https://github.com/veripublica/epubveri) — no
 Java, sub-second, and reporting epubcheck's own message IDs so the output is
 recognisable. **It reads your book and reports; it changes nothing.**
 
-> **Status: not released.** The half that talks to epubveri is finished and is
-> the same code the Sigil plugin's tests exercise. The half that talks to
-> calibre is written against its published plugin API and has **not been run
-> inside calibre**, so there is no download for it yet. What is missing is
-> listed at the top of `main.py`: a results view, jumping the editor to a
-> finding, the preferences page, and the update check.
+> **Status: written, partly exercised, not released.** The whole plugin is now
+> written — the tool, the results view with navigation, the settings page and
+> the update check — and it has been installed into calibre, where it
+> registers and imports. The container path is measured against real books
+> (see the CHANGELOG). What has **not** happened is a human clicking the menu
+> item and using the panel, and no platform but macOS has seen it at all.
+> There is no download for it yet, and there should not be one until it has
+> been driven by hand. Doitsu's calibre plugin is the working one today.
 
 ## Why it is a separate plugin rather than a mode of the Sigil one
 
