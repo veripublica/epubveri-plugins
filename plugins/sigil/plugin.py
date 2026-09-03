@@ -527,6 +527,36 @@ def _char_offset(workdir, location, line, column):
     return offsets[line - 1] + max((column or 1) - 1, 0)
 
 
+def _fail(bk, message):
+    """Say why nothing was validated, and return the code Sigil expects.
+
+    **It has to be printed, not added as a result.** `PluginRunner::launch`
+    checks the return value first: on anything other than zero it writes
+    `<result>failed</result>` and returns *before* the loop that copies
+    `container.results` into the wrapper XML (`launcher.py`, the
+    `if self.exitcode != 0` block). So a plugin that reports a problem the way
+    it reports a finding and then returns non-zero has thrown that report
+    away, and the user is told the plugin failed with nothing about why.
+
+    Standard output survives instead: `SavedStream` collects it and the
+    launcher puts it in `<msg>` on both paths — success and failure — so it
+    reaches the plugin's output window either way. DiapDealer, who maintains
+    Sigil, gave the same advice for the summary line (MobileRead 374939 #26):
+    print it before returning control.
+
+    The result row is kept beside the print. It is discarded today, costs
+    nothing, and is the right thing to have written if a future Sigil keeps
+    results on a failed run.
+
+    `message` is a whole sentence, already naming epubveri. The prefix stays
+    at the call sites because one of them supplies its own: prefixing here
+    produced "epubveri: epubveri could not be downloaded".
+    """
+    print(message)
+    bk.add_result("error", _NO_FILE, -1, _xml_attr(message))
+    return -1
+
+
 def _report(bk, envelope, workdir, show):
     """Put the findings into Sigil's validation panel.
 
@@ -580,14 +610,11 @@ def run(bk):
     try:
         binary, update_note = _ensure_binary(bk)
     except Exception as exc:                           # noqa: BLE001
-        bk.add_result("error", _NO_FILE, -1, _xml_attr(_install_failure(exc)))
-        return -1
+        return _fail(bk, _install_failure(exc))
 
     if binary is None:
         # Integrity check failed. Nothing is executed.
-        bk.add_result("error", _NO_FILE, -1,
-                      _xml_attr("epubveri: %s" % update_note))
-        return -1
+        return _fail(bk, "epubveri: %s" % update_note)
 
     # Read after `_ensure_binary`, which writes to the same file: it is the
     # one that creates it on a first run, and it saves `autoupdate` and the
@@ -605,19 +632,13 @@ def run(bk):
             # this plugin does not own.
             envelope = runner.run_epubveri(binary, epub_path)
         except EnvelopeError as exc:
-            bk.add_result("error", _NO_FILE, -1,
-                          _xml_attr("epubveri: %s" % exc))
-            return -1
+            return _fail(bk, "epubveri: %s" % exc)
         except Exception as exc:                       # noqa: BLE001
-            bk.add_result("error", _NO_FILE, -1,
-                          _xml_attr("epubveri failed to run: %s" % exc))
-            return -1
+            return _fail(bk, "epubveri failed to run: %s" % exc)
 
         if envelope.could_not_read:
-            bk.add_result("error", _NO_FILE, -1, _xml_attr(
-                "epubveri could not read the book: %s"
-                % (envelope.error or "no reason given")))
-            return -1
+            return _fail(bk, "epubveri could not read the book: %s"
+                         % (envelope.error or "no reason given"))
 
         counts = _report(bk, envelope, workdir, show)
         verdict = "VALID" if envelope.is_valid else "NOT VALID"

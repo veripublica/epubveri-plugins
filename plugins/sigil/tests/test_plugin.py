@@ -720,16 +720,18 @@ class RunTests(unittest.TestCase):
         plugin._ensure_binary = explode
         try:
             bk = FakeBk()
-            self.assertEqual(plugin.run(bk), -1)
+            # The reason is printed as well as added, so that it survives
+            # Sigil discarding the results on a non-zero return. Swallow it
+            # here rather than letting every run of the suite carry it.
+            import contextlib
+            import io as _io
+            with contextlib.redirect_stdout(_io.StringIO()):
+                self.assertEqual(plugin.run(bk), -1)
         finally:
             plugin._ensure_binary = orig
         self.assertEqual(len(bk.results), 1)
         self.assertEqual(bk.results[0][0], "error")
         self.assertNotEqual(bk.results[0][1], "")
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
 
 
 class CleanBk(FakeBk):
@@ -950,5 +952,51 @@ class IconTests(unittest.TestCase):
         self.assertGreaterEqual(icon.TICK_WIDTH * 16 / icon.GRID, 1.5)
 
 
+@unittest.skipIf(_binary() is None, "set EPUBVERI_BINARY")
+class ExitCodeTests(unittest.TestCase):
+    """What Sigil is told, as opposed to what the panel shows.
+
+    `PluginRunner::launch` checks the return value before it copies the
+    plugin's results into the wrapper XML: on anything non-zero it writes
+    `<result>failed</result>` and returns early, so every `add_result` is
+    discarded. Standard output survives on both paths. Read off Sigil's own
+    `plugin_launchers/python/launcher.py`.
+
+    DNSB reported an automation erroring on every run after swapping epubcheck
+    for this plugin (MobileRead 374939 #23), and DiapDealer answered that any
+    non-zero return is an error to Sigil (#24). These pin our side of that.
+    """
+
+    def test_a_completed_validation_returns_zero_however_the_book_is(self):
+        """Valid or not, the plugin did its job. The verdict belongs in the
+        panel; the return value says whether epubveri ran."""
+        self.assertEqual(plugin.run(FakeBk()), 0, "an invalid book")
+        self.assertEqual(plugin.run(CleanBk()), 0, "a clean book")
+
+    def test_a_failure_says_why_on_stdout_where_it_survives(self):
+        """The reason must not be an add_result and nothing else: on a
+        non-zero return Sigil throws the results away and the user is told the
+        plugin failed with no word about why."""
+        import contextlib
+        import io as _io
+
+        real = plugin._ensure_binary
+        plugin._ensure_binary = lambda bk: (_ for _ in ()).throw(
+            RuntimeError("no build for sparc"))
+        try:
+            bk = FakeBk()
+            out = _io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = plugin.run(bk)
+        finally:
+            plugin._ensure_binary = real
+
+        self.assertEqual(code, -1)
+        self.assertIn("sparc", out.getvalue(),
+                      "the reason never left the results table")
+        self.assertTrue(out.getvalue().startswith("epubveri"),
+                        out.getvalue())
+
+
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=2)

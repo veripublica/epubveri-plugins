@@ -40,6 +40,27 @@ Both from Doitsu, MobileRead 374939 #21.
   its own, so an empty panel is indistinguishable from a plugin that failed to
   run, and "your book is clean" is the one message worth not losing.
 
+- **When the plugin cannot run, it now says why where the message survives.**
+  Five paths report a problem and return non-zero — no binary, a failed
+  integrity check, a broken envelope, a validator that would not run, a book
+  epubveri could not read — and each said so with `add_result`, which on those
+  paths is thrown away. Sigil's `PluginRunner::launch` checks the return value
+  *first*: on anything other than zero it writes `<result>failed</result>` and
+  returns before the loop that copies the plugin's results into the wrapper
+  XML. So the user was told the plugin failed and nothing about why, and none
+  of those five messages had ever reached anybody.
+
+  They are printed as well now. Standard output is collected by the launcher
+  and put in `<msg>` on both paths, success and failure, so it reaches the
+  plugin's output window either way. DiapDealer, who maintains Sigil, gave the
+  same advice for the summary line in MobileRead 374939 #26 — print it before
+  returning control.
+
+  The verdict is unaffected: a validation that *completes* returns zero
+  whether the book is valid or not, which is now pinned by a test. Prompted by
+  DNSB's report that an automation errored on every run after epubcheck was
+  swapped for this plugin (374939 #23).
+
 - **A new icon: a document with a tick knocked out of it, and no tile.**
   DiapDealer, who maintains Sigil, pointed out that Linux Sigil takes any
   theme colour imaginable and that simpler is best across three platforms

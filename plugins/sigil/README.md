@@ -172,6 +172,9 @@ clean" is the one message worth not losing.
   The message says which. A checksum failure means nothing was installed.
 - **No epubveri build for this platform** — the release covers Linux, macOS and
   Windows on x86-64 and ARM64. Anything else has to be built from source.
+- **The plugin says it failed but the panel is empty?** Look at the plugin's
+  output window: when epubveri cannot be run at all, Sigil discards everything
+  the plugin put in the results table, so the reason is printed there instead.
 - The plugin never modifies your book. It writes a temporary copy, validates
   that, and deletes it.
 
