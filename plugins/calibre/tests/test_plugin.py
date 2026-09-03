@@ -525,6 +525,64 @@ class ResultsDockTests(unittest.TestCase):
         self.assertEqual(len(docks), 1, docks)
         self.assertIs(docks[0], tool._dock)
 
+    def test_the_action_takes_the_icon_calibre_hands_it(self):
+        """calibre's own idiom is `QAction(get_icons('myicon.png'), ...)`, and
+        this plugin shipped without one — the toolbar and the Plugins menu had
+        text and nothing else.
+
+        `get_icons` is injected into the module by calibre's zip loader, so
+        under the tests it does not exist. Inject one and check the action
+        actually asked for the file that `build.py` puts at the archive root.
+        """
+        asked = []
+
+        def fake_get_icons(name):
+            from qt.core import QIcon
+            asked.append(name)
+            return QIcon()
+
+        plugin.__dict__['get_icons'] = fake_get_icons
+        try:
+            tool = stub_tool()
+            tool.create_action()
+        finally:
+            del plugin.__dict__['get_icons']
+        self.assertEqual(asked, ['plugin.png'])
+
+    def test_no_zip_means_no_icon_and_no_exception(self):
+        """Calling `get_icons` blind would raise NameError inside
+        `create_action`, and calibre swallows that: `create_plugin_action`
+        prints a traceback to stderr and drops the tool from the menu with
+        nothing on screen. So the tool must load with no injection at all."""
+        self.assertNotIn('get_icons', plugin.__dict__)
+        tool = stub_tool()
+        action = tool.create_action()
+        self.assertIsNotNone(action)
+        self.assertTrue(action.icon().isNull())
+
+    def test_the_shipped_icon_is_the_one_icon_py_draws(self):
+        """The same three-copies problem the Sigil side has: one mark, two
+        plugins, and nothing but this notices when they stop agreeing."""
+        import importlib.util
+        root = os.path.dirname(os.path.dirname(PLUGIN_DIR))
+        spec = importlib.util.spec_from_file_location(
+            'epubveri_icon', os.path.join(root, 'icon.py'))
+        icon = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(icon)
+
+        import tempfile
+        fd, path = tempfile.mkstemp(suffix='.png')
+        os.close(fd)
+        try:
+            icon.write_png(path, 128)
+            with open(path, 'rb') as a, \
+                    open(os.path.join(PLUGIN_DIR, 'plugin.png'), 'rb') as b:
+                self.assertEqual(a.read(), b.read(),
+                                 'plugin.png does not match the geometry; '
+                                 'run icon.py')
+        finally:
+            os.unlink(path)
+
     def test_the_dock_carries_the_name_calibre_saves_its_position_under(self):
         """calibre's own docks set an objectName with the comment "Needed for
         saveState". Without one Qt cannot restore where the user put it."""

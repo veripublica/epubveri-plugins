@@ -527,10 +527,30 @@ class EpubVeriTool(Tool):
         self._dock = dock
         return dock
 
+    def _action_icon(self):
+        """The toolbar icon, or a null one where there is no plugin zip.
+
+        `get_icons` is not imported: calibre's zip loader injects it into every
+        module of a plugin it loads (`zipplugin.py`, `module.__dict__`), bound
+        to that plugin's archive. Given one name it returns a `QIcon` read from
+        the zip — so `plugin.png` has to be at the archive root, which is where
+        `build.py` puts everything.
+
+        Under the tests there is no zip and no injection, so this looks the
+        name up rather than trusting it to exist. Calling it blind would raise
+        `NameError` inside `create_action`, and calibre **swallows** that:
+        `create_plugin_action` prints a traceback to stderr and drops the tool
+        from the menu with nothing on screen.
+        """
+        from qt.core import QIcon
+        get = globals().get('get_icons')
+        return get('plugin.png') if get is not None else QIcon()
+
     def create_action(self, for_toolbar=True):
         from qt.core import QAction
         self._ensure_dock()
-        action = QAction('Validate with epubveri', self.gui)
+        action = QAction(self._action_icon(), 'Validate with epubveri',
+                         self.gui)
         action.triggered.connect(self.validate)
         if not for_toolbar:
             self.register_shortcut(action, 'epubveri-validate')

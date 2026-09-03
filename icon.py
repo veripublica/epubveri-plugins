@@ -6,15 +6,24 @@
 # under the terms of the GNU General Public License as published by the Free
 # Software Foundation, either version 3 of the License, or (at your option)
 # any later version. See the LICENSE file at the root of this repository.
-"""Write `plugin.svg` and `plugin.png` from one description of the mark.
+"""Write every copy of the plugin icon from one description of the mark.
 
-    python3 plugins/sigil/icon.py
+    python3 icon.py
 
-**Why this exists rather than two hand-kept files.** Sigil looks for
-`plugin.svg` and falls back to `plugin.png`, so the two have to agree, and
-nothing checks that they do — a mark edited in one and not the other is a
-difference only somebody running the other platform would ever see. The
-geometry below is the single source and both files are generated from it.
+**At the root, not inside a plugin, because the mark is not a packaging
+detail.** Each plugin packages itself — that argument is about the editors'
+different and unforgiving archive layouts, and it does not extend to a brand
+asset both of them show. There are three copies of this icon and they must be
+the same drawing:
+
+    plugins/sigil/plugin.svg     Sigil prefers the SVG
+    plugins/sigil/plugin.png     and falls back to the PNG
+    plugins/calibre/plugin.png   calibre's `get_icons` reads it from the zip
+
+Nothing checks that hand-kept copies agree, and a mark edited in one and not
+another is a difference only somebody running the other editor would ever see.
+The geometry below is the single source; each plugin's tests compare its
+shipped file against what this produces.
 
 **Why it rasterises itself.** A PNG needs a rasteriser, and the ones a
 contributor might have (rsvg-convert, Inkscape, cairosvg, Pillow) are four
@@ -44,7 +53,9 @@ import struct
 import sys
 import zlib
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.abspath(__file__))
+SIGIL = os.path.join(ROOT, "plugins", "sigil")
+CALIBRE = os.path.join(ROOT, "plugins", "calibre")
 
 #: Everything is described on a 64 grid, which is the SVG's viewBox. The mark
 #: fills 44x60 of it: as tall as a full-bleed tile would be, so it does not
@@ -159,12 +170,13 @@ def write_png(path, size=128):
 
 
 def main():
-    svg = os.path.join(HERE, "plugin.svg")
-    png = os.path.join(HERE, "plugin.png")
+    svg = os.path.join(SIGIL, "plugin.svg")
     with open(svg, "w", encoding="utf-8") as handle:
         handle.write(SVG)
     print("%s  (%d bytes)" % (svg, len(SVG.encode("utf-8"))))
-    print("%s  (%d bytes)" % (png, write_png(png)))
+    for png in (os.path.join(SIGIL, "plugin.png"),
+                os.path.join(CALIBRE, "plugin.png")):
+        print("%s  (%d bytes)" % (png, write_png(png)))
     return 0
 
 

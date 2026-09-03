@@ -5,6 +5,23 @@ calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
 ## [0.1.1] — unreleased
 
+- **The plugin has an icon.** It shipped with none: the toolbar button and
+  the Plugins menu entry were text and nothing else, which the owner noticed
+  the moment it was installed beside the Sigil one. calibre's own idiom is
+  `QAction(get_icons('myicon.png'), …)`, and `get_icons` is injected into the
+  module by calibre's zip loader rather than imported — so it is looked up
+  rather than called blind, because a `NameError` inside `create_action` is
+  one calibre **swallows**: it prints a traceback to stderr and drops the tool
+  from the menu with nothing on screen.
+
+  It is the same mark as the Sigil plugin's, and **`icon.py` now sits at the
+  repository root and writes all three copies** — `plugins/sigil/plugin.svg`,
+  `plugins/sigil/plugin.png` and `plugins/calibre/plugin.png`. Each plugin
+  packages itself because the editors' archive layouts differ; a brand asset
+  both of them show is not that kind of difference. Tests on both sides
+  compare the shipped file against what the geometry produces, and one
+  compares the two plugins' copies with each other.
+
 - **The results are a dock now, not a window.** Doitsu asked for one "like
   Calibre's check book tool" (MobileRead 374940 #16) and JSWolf said that was
   more than a nitpick (#17). They were right: the dialog had the correct

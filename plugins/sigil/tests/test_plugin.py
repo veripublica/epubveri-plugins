@@ -26,6 +26,8 @@ import zipfile
 from datetime import datetime, timedelta, timezone
 
 PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#: The repository root, where `icon.py` lives — one mark, both plugins.
+ROOT = os.path.dirname(os.path.dirname(PLUGIN_DIR))
 sys.path.insert(0, PLUGIN_DIR)
 
 import plugin  # noqa: E402
@@ -966,7 +968,7 @@ class IconTests(unittest.TestCase):
 
     def _icon(self):
         import importlib.util
-        path = os.path.join(plugin._plugin_dir(), "icon.py")
+        path = os.path.join(ROOT, "icon.py")
         # By path, and under a name of its own: `import icon` inside Sigil or
         # calibre finds whatever else is called that.
         spec = importlib.util.spec_from_file_location("epubveri_sigil_icon",
@@ -997,6 +999,17 @@ class IconTests(unittest.TestCase):
                                  "run icon.py")
         finally:
             os.unlink(path)
+
+    def test_both_plugins_ship_the_same_drawing(self):
+        """One mark, three files, two editors. Nothing but this notices when
+        they stop agreeing, and a divergence is visible only to somebody
+        running the editor whose copy went stale."""
+        sigil = os.path.join(plugin._plugin_dir(), "plugin.png")
+        calibre = os.path.join(ROOT, "plugins", "calibre", "plugin.png")
+        with open(sigil, "rb") as a, open(calibre, "rb") as b:
+            self.assertEqual(a.read(), b.read(),
+                             "the two plugins' icons have diverged; "
+                             "run icon.py")
 
     def test_the_mark_fills_the_grid_it_shares_with_its_alternatives(self):
         """The first draft of this mark stood 35x52 against a 60x60 tile and
