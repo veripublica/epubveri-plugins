@@ -3,7 +3,11 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
-## [0.1.1] — unreleased
+## [0.2.0] — 2026-09-04
+
+Minor rather than patch: the dock replaces the whole results interface, which
+is not a fix. Still versioned independently of the Sigil plugin — the two
+happening to be at 0.2.0 on the same day is a coincidence, not a pairing.
 
 - **The plugin has an icon.** It shipped with none: the toolbar button and
   the Plugins menu entry were text and nothing else, which the owner noticed
@@ -47,7 +51,7 @@ calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
   describing a book that had since been edited.
 
 - **The summary names the plugin's version as well as epubveri's** —
-  `epubveri 0.13.3 (plugin 0.1.1) — VALID …`. Asked for by Doitsu so that a
+  `epubveri 0.13.3 (plugin 0.2.0) — VALID …`. Asked for by Doitsu so that a
   pasted line identifies both halves (MobileRead 374939 #21). It comes from
   the same `PLUGIN_VERSION_TUPLE` calibre reads for Preferences, so there is
   no second copy to bump. Most of what has gone wrong in these plugins so far
