@@ -486,6 +486,13 @@ class EpubVeriTool(Tool):
         store. Adding it later, on the first validation, would put it back in
         the default corner every session.
 
+        **That order holds in calibre 6.0, 7.0, 8.0 and 9.14** — checked in
+        each, because `minimum_calibre_version` claims all of them and this
+        would fail silently on any release where it did not. The round trip
+        itself is a test rather than a claim: move the dock, save the window
+        state, build a fresh window and dock, restore, and it comes back where
+        it was put — and does not when the objectName is removed.
+
         `self.gui` is safe this early: `Main.__init__` assigns `self.boss =
         Boss(self)` before `create_actions()`, and `Boss.__init__` sets both
         the module-level `_boss` and `self.gui = parent` before it returns.

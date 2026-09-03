@@ -531,7 +531,13 @@ class ResultsDockTests(unittest.TestCase):
         tool = stub_tool()
         tool.create_action()
         self.assertEqual(tool._dock.objectName(), tool.DOCK_OBJECT_NAME)
-        self.assertTrue(tool._dock.objectName())
+        # And the literal, on purpose. This name is persisted in the user's
+        # saved window layout, so renaming it in a later version silently
+        # orphans wherever they had put the panel — the same shape as a
+        # preference key outliving the feature that wrote it, which cost a
+        # real user a silently-hidden category. A test that has to be edited
+        # is the cheapest way to make that a decision instead of an accident.
+        self.assertEqual(tool.DOCK_OBJECT_NAME, 'epubveri-results-dock')
 
     def test_it_starts_hidden_and_a_validation_brings_it_up(self):
         """Nothing should appear until the user asks for a validation, which
@@ -541,6 +547,67 @@ class ResultsDockTests(unittest.TestCase):
         self.assertFalse(tool._dock.isVisibleTo(tool.window))
         tool._show(Envelope([Finding('error')]), None)
         self.assertTrue(tool._dock.isVisibleTo(tool.window))
+
+    def test_calibre_remembers_where_the_dock_was_put(self):
+        """The claim the whole `create_action` timing exists to earn, done as
+        a round trip rather than asserted.
+
+        `Main.__init__` runs `create_actions()` — where this dock is built —
+        before `create_docks()`, and defers `restore_state` to
+        `QTimer.singleShot(0, ...)`, so the dock exists by the time
+        `restoreState` runs. Nothing of ours is stored anywhere; if this is
+        wrong the panel returns to the default corner every session and the
+        only way to find out is to use calibre for a week.
+
+        Move it, save the window state, build a fresh window and dock the way
+        a new session would, restore, and see where it lands.
+        """
+        from qt.core import Qt
+        version = 0
+
+        first = stub_tool()
+        first.create_action()
+        self.assertEqual(first.window.dockWidgetArea(first._dock),
+                         Qt.DockWidgetArea.TopDockWidgetArea)
+        # The user drags it to the bottom and leaves it open.
+        first.window.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
+                                   first._dock)
+        first._dock.show()
+        state = bytes(first.window.saveState(version))
+        self.assertTrue(state)
+
+        second = stub_tool()
+        second.create_action()
+        self.assertTrue(second.window.restoreState(state, version))
+        self.assertEqual(second.window.dockWidgetArea(second._dock),
+                         Qt.DockWidgetArea.BottomDockWidgetArea,
+                         "the dock did not come back where it was put")
+        self.assertTrue(second._dock.isVisibleTo(second.window),
+                        "it came back but closed")
+
+    def test_without_the_object_name_nothing_is_remembered(self):
+        """The control that makes the test above mean something. Qt matches a
+        saved dock to a live one by objectName and by nothing else, which is
+        why calibre's own docks set one with the comment "Needed for
+        saveState"."""
+        from qt.core import Qt
+        version = 0
+
+        first = stub_tool()
+        first.create_action()
+        first.window.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
+                                   first._dock)
+        first._dock.show()
+        state = bytes(first.window.saveState(version))
+
+        nameless = stub_tool()
+        nameless.create_action()
+        nameless._dock.setObjectName('')
+        nameless.window.restoreState(state, version)
+        self.assertEqual(nameless.window.dockWidgetArea(nameless._dock),
+                         Qt.DockWidgetArea.TopDockWidgetArea,
+                         "a nameless dock was matched, so this test proves "
+                         "nothing about the named one")
 
     def test_validating_twice_reuses_the_one_dock(self):
         """The dialog this replaces had to close its predecessor by hand, or
