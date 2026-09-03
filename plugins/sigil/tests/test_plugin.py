@@ -18,7 +18,9 @@ Set EPUBVERI_BINARY to test against a build other than the installed one.
 """
 
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -89,6 +91,7 @@ class FakeBk(object):
         self.prefs = {"last_update_check": _now().isoformat()}
         self.prefs.update(prefs or {})
         self.results = []
+        self.get_opf_calls = 0
 
     def getPrefs(self):
         return self.prefs
@@ -100,7 +103,15 @@ class FakeBk(object):
         return "OEBPS/content.opf"
 
     def get_opf(self):
-        return OPF
+        """Sigil's re-serialisation, which is NOT what Code View shows.
+
+        Deliberately different from the copied file — an extra line and the
+        manifest rewritten — so that a plugin which goes back to substituting
+        it fails on the position, not merely on the call count.
+        """
+        self.get_opf_calls += 1
+        return OPF.replace("<manifest>", "<!-- rebuilt by Sigil -->\n  "
+                                         "<manifest>")
 
     def copy_book_contents_to(self, destdir):
         for name, text in FILES.items():
@@ -144,6 +155,30 @@ class BuildEpubTests(unittest.TestCase):
                 self.assertEqual(len(names), len(FILES))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_the_opf_is_the_one_sigil_shows_not_a_rebuild(self):
+        """Positions must land in the document Code View is displaying.
+
+        The OPF is not a manifest item, so `copy_book_contents_to` fetches it
+        through `Wrapper.readotherfile`, which returns `build_opf()` only when
+        the book has unsaved OPF edits and the file from the ebook root
+        otherwise. 0.1.0 overwrote it with `get_opf()` in every case, which
+        replaced the text the user sees with a rebuild that sorts the manifest
+        by id — so the panel's line number and the cursor referred to different
+        documents. Reported as content.opf saying 95 and highlighting 96.
+        """
+        bk = FakeBk()
+        tmpdir = tempfile.mkdtemp(prefix="epubveri-test-")
+        try:
+            _epub, workdir = plugin._build_epub(bk, tmpdir)
+            with open(os.path.join(workdir, "OEBPS", "content.opf"),
+                      encoding="utf-8") as handle:
+                written = handle.read()
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        self.assertEqual(written, OPF)
+        self.assertEqual(bk.get_opf_calls, 0,
+                         "the OPF Sigil displays was replaced by a rebuild")
 
     def test_line_and_column_map_to_a_character_offset(self):
         """The offset must land on the character epubveri named.

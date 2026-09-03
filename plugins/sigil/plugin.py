@@ -354,18 +354,31 @@ def _build_epub(bk, destdir):
     epubveri takes a packaged file and not an unpacked directory — a decided
     scope, so that every tool in this family hands the others the same unit.
     `copy_book_contents_to` gives the whole container including `mimetype` and
-    `META-INF/`, and the OPF is then overwritten with Sigil's live one so that
-    unsaved manifest or spine edits are what gets validated.
+    `META-INF/`, and that is all of it.
+
+    **Nothing is substituted afterwards, and the OPF is the reason.** 0.1.0
+    overwrote it with `get_opf()` so that unsaved manifest or spine edits were
+    what got validated. That was already handled: the OPF is not a manifest
+    item, so it is copied through `Wrapper.readotherfile`, which special-cases
+    it (`wrapper.py`) —
+
+        if id == self.opfbookpath:
+            if id in self.modified:
+                return self.build_opf()
+
+    — returning Sigil's live rebuild when the book has unsaved OPF edits and
+    **the file from the ebook root otherwise**, which is the text Code View is
+    showing. Overwriting unconditionally threw that second case away and put
+    a document nobody can see under our line numbers: `build_opf` re-serialises
+    from Sigil's model, sorting the manifest by `id` and rewriting each item as
+    `<item id= href= media-type= />`. On the book that found this the cover
+    entry sits at line 91 in the file, 95 in the rebuild, and 96 in what Sigil
+    displayed — three numbers for one line. Reported by the owner: the panel
+    said 95 and the cursor landed on 96, in content.opf only.
     """
     workdir = os.path.join(destdir, "book")
     os.makedirs(workdir)
     bk.copy_book_contents_to(workdir)
-
-    opf_path = os.path.join(workdir, bk.get_opfbookpath())
-    opf = bk.get_opf()
-    if opf:
-        with open(opf_path, "wb") as handle:
-            handle.write(opf.encode("utf-8") if isinstance(opf, str) else opf)
 
     epub_path = os.path.join(destdir, "current.epub")
     # `mimetype` first and stored, which OCF requires and which epubveri checks

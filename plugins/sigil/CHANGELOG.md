@@ -21,6 +21,20 @@ Both items reported the day 0.1.0 shipped, by DNSB on Windows
   finding epubveri reports about the container rather than about a file**. All
   of them are fixed, and no result may carry an empty bookpath now: a test
   asserts it over the whole run.
+- **Positions in content.opf now land in the document Sigil is showing.**
+  The panel said line 95 and the cursor went to 96, in the OPF only. 0.1.0
+  overwrote the copied OPF with `get_opf()`, and that is a *rebuild* from
+  Sigil's model — it sorts the manifest by `id` and rewrites every entry as
+  `<item id= href= media-type= />`. Our line numbers and character offsets
+  were correct for that rebuild and for nothing else: on the book that found
+  it, the cover entry is at line 91 in the file, 95 in the rebuild, and 96 in
+  what Sigil displayed. The substitution was there so unsaved manifest and
+  spine edits would be validated, and it was never needed — the OPF is not a
+  manifest item, so `copy_book_contents_to` fetches it through
+  `Wrapper.readotherfile`, which already returns the live rebuild when the
+  book has unsaved OPF edits and the file from the ebook root otherwise. So
+  removing it keeps the unsaved edits and gets the positions back. Nothing is
+  substituted after the copy now, and a test asserts it.
 - **The plugin has an icon**, so Manage Plugins and the toolbar show something
   other than a placeholder. Shipped as `plugin.svg` with a `plugin.png`
   beside it, which is the order Sigil looks in. It is a filled tile rather
