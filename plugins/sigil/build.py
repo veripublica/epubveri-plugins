@@ -33,7 +33,7 @@ and then `verify_plugin_zip` requires *every* entry in the archive to begin
 made Sigil look for a folder called `sigil` and refuse the plugin; the tests
 now pin the rule.
 
-    python3 plugins/sigil/build.py       -> dist/sigil/epubveri_vX.Y.Z.zip
+    python3 plugins/sigil/build.py       -> dist/sigil/epubveri_sigil_vX.Y.Z.zip
 """
 
 import os
@@ -80,9 +80,16 @@ def build():
     shutil.copy2(os.path.join(ROOT, "LICENSE"), staging)
 
     os.makedirs(DIST, exist_ok=True)
-    # `<folder>_<version>.zip`: Sigil truncates at the first underscore to get
-    # the folder name, so the prefix is not decoration.
-    out = os.path.join(DIST, "%s_v%s.zip" % (FOLDER, version()))
+    # `<folder>_sigil_v<version>.zip`. Sigil truncates at the FIRST
+    # underscore to get the folder name, so `epubveri` is load-bearing and
+    # everything after it is inert — which is the room the editor's name fits
+    # into. `sigil_epubveri_…` would make Sigil look for a folder called
+    # `sigil` and refuse the plugin; that was tried once.
+    #
+    # It is there because both plugins used to ship an archive called
+    # `epubveri_vX.Y.Z.zip` and a downloaded file said nothing about which
+    # editor it was for (PeterT, MobileRead 374286 #275).
+    out = os.path.join(DIST, "%s_sigil_v%s.zip" % (FOLDER, version()))
     if os.path.exists(out):
         os.remove(out)
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:

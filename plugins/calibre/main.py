@@ -47,6 +47,7 @@ from qt.core import (QAbstractItemView, QCheckBox, QDialog, QDialogButtonBox,
 # The plugin's own package, never a bare `from client import ...` with the
 # plugin folder pushed onto sys.path: `client` is a name any other plugin
 # might also use, and the first one imported would win for both.
+from calibre_plugins.epubveri import PLUGIN_VERSION
 from calibre_plugins.epubveri.client import binary as bin_mod
 from calibre_plugins.epubveri.client import runner
 from calibre_plugins.epubveri.client.envelope import EnvelopeError
@@ -527,8 +528,14 @@ class EpubVeriTool(Tool):
         # The verdict quotes only errors, fatals and warnings, because that is
         # what decides it and what epubcheck would print. Usage notes and
         # advisories count towards neither, whether or not they are listed.
-        summary = 'epubveri %s — %s (%d error(s), %d warning(s))' % (
-            envelope.version, verdict,
+        # Both versions are named (Doitsu, MobileRead 374939 #21, "for
+        # debugging purposes"). epubveri's says which validator produced the
+        # findings; the plugin's says which code turned them into these rows,
+        # and most of what has gone wrong in these plugins so far was on this
+        # side of that line. `PLUGIN_VERSION` is derived from the tuple
+        # calibre itself reads, so there is no second copy to bump.
+        summary = 'epubveri %s (plugin %s) — %s (%d error(s), %d warning(s))' % (
+            envelope.version, PLUGIN_VERSION, verdict,
             envelope.count('error') + envelope.count('fatal'),
             envelope.count('warning'))
         advisory = sum(1 for f in envelope.findings if f.is_advisory)

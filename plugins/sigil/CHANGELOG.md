@@ -64,6 +64,18 @@ Both from Doitsu, MobileRead 374939 #21.
   DNSB's report that an automation errored on every run after epubcheck was
   swapped for this plugin (374939 #23).
 
+- **The archive is now `epubveri_sigil_vX.Y.Z.zip`.** Both plugins shipped a
+  file called `epubveri_vX.Y.Z.zip`, so a download said nothing about which
+  editor it was for and the two names would collide outright once the versions
+  met (PeterT, MobileRead 374286 #275).
+
+  Only half the name was free. Sigil takes the folder name from the archive's
+  basename up to the **first** underscore and then requires every entry to sit
+  under it, so `epubveri` is load-bearing and everything after it is inert —
+  `sigil_epubveri_…` makes Sigil look for a folder called `sigil` and refuse
+  the plugin. The two rules pull against each other, so the test asserts both:
+  a rename that satisfies one and breaks the other would otherwise pass.
+
 - **A new icon: a document with a tick knocked out of it, and no tile.**
   DiapDealer, who maintains Sigil, pointed out that Linux Sigil takes any
   theme colour imaginable and that simpler is best across three platforms

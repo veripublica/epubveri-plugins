@@ -597,6 +597,15 @@ class PackageTests(unittest.TestCase):
             basename = os.path.splitext(os.path.basename(path))[0]
             expected = basename.split("_")[0]
             self.assertEqual(expected, build.FOLDER)
+            # And the half of the name Sigil ignores has to say which editor
+            # this is for. Both plugins shipped `epubveri_vX.Y.Z.zip` until
+            # PeterT pointed out that a downloaded file said nothing about
+            # which one it was (MobileRead 374286 #275). The two rules pull
+            # against each other — the folder name is fixed, the rest is free
+            # — so both are asserted or a rename satisfies one and breaks the
+            # other silently.
+            self.assertIn("sigil", basename[len(expected):],
+                          "%s does not say which editor it is for" % basename)
 
             with zf_mod.ZipFile(path) as zf:
                 names = zf.namelist()

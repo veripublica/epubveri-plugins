@@ -26,7 +26,7 @@ and neither can break the other.
 
 ## Installing
 
-1. Download `epubveri_vX.Y.Z.zip` from
+1. Download `epubveri_calibre_vX.Y.Z.zip` from
    [Releases](https://github.com/veripublica/epubveri-plugins/releases) —
    the one tagged **`calibre-`**, since this repository releases both plugins
    and GitHub's "Latest" badge only means newest by date.

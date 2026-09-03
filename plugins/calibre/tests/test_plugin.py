@@ -47,7 +47,15 @@ if not hasattr(_pkg, '__path__'):
     _pkg.__path__ = []
 _sub = types.ModuleType('calibre_plugins.epubveri')
 _sub.__path__ = [PLUGIN_DIR]
+_sub.__file__ = os.path.join(PLUGIN_DIR, '__init__.py')
 sys.modules['calibre_plugins.epubveri'] = _sub
+# And run the real `__init__.py` into it. An empty stand-in is not the package
+# calibre builds: it has no PLUGIN_VERSION, which `main` names in the summary
+# line, so a module-level import of it passed inside calibre and failed here.
+# A harness that differs from production in what it *defines* will keep
+# producing that shape of failure.
+with open(_sub.__file__, encoding='utf-8') as _handle:
+    exec(compile(_handle.read(), _sub.__file__, 'exec'), _sub.__dict__)
 
 import calibre_plugins.epubveri.main as plugin           # noqa: E402
 
@@ -533,6 +541,21 @@ class SummaryTests(unittest.TestCase):
         self.assertIn('NOT VALID', text)
         self.assertIn('2 error(s)', text)      # a fatal counts as an error
         self.assertIn('1 warning(s)', text)
+
+    def test_the_summary_names_the_plugin_version_beside_epubveri_s(self):
+        """Doitsu, MobileRead 374939 #21: "add the plugin version number for
+        debugging purposes". Two versions because two things can be wrong, and
+        most of what has gone wrong in these plugins was the plugin.
+
+        It comes from the tuple calibre itself reads, so there is no second
+        copy that can disagree with what Preferences shows.
+        """
+        from calibre_plugins.epubveri import (PLUGIN_VERSION,
+                                              PLUGIN_VERSION_TUPLE)
+        text = self._summary([Finding('error')])
+        self.assertIn('(plugin %s)' % PLUGIN_VERSION, text)
+        self.assertEqual(PLUGIN_VERSION,
+                         '.'.join(str(p) for p in PLUGIN_VERSION_TUPLE))
 
     def test_a_hidden_finding_is_declared_never_silently_dropped(self):
         """A shorter report with no explanation is the one thing a display

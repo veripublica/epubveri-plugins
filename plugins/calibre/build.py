@@ -14,7 +14,7 @@ the top level of the zip**, where Sigil wants a folder. `__init__.py` and
 `plugin-import-name-epubveri.txt` have to be at the root of the archive or
 calibre will not import the plugin at all.
 
-    python3 plugins/calibre/build.py    -> dist/calibre/epubveri_vX.Y.Z.zip
+    python3 plugins/calibre/build.py    -> dist/calibre/epubveri_calibre_vX.Y.Z.zip
 """
 
 import os
@@ -53,9 +53,12 @@ def build():
     shutil.copy2(os.path.join(ROOT, "LICENSE"), staging)
 
     os.makedirs(DIST, exist_ok=True)
-    # calibre reads the plugin name from the class and the import-name marker,
-    # so unlike Sigil the archive name carries no meaning.
-    out = os.path.join(DIST, "epubveri_v%s.zip" % version())
+    # calibre reads the plugin name from the class and the import-name
+    # marker, so unlike Sigil the archive name carries no meaning and the
+    # editor's name can simply go in it. Both plugins used to ship an archive
+    # called `epubveri_vX.Y.Z.zip`, and a downloaded file said nothing about
+    # which editor it was for (PeterT, MobileRead 374286 #275).
+    out = os.path.join(DIST, "epubveri_calibre_v%s.zip" % version())
     if os.path.exists(out):
         os.remove(out)
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:

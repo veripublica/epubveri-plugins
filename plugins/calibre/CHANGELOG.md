@@ -3,6 +3,31 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
+## [0.1.1] — unreleased
+
+- **The summary names the plugin's version as well as epubveri's** —
+  `epubveri 0.13.3 (plugin 0.1.1) — VALID …`. Asked for by Doitsu so that a
+  pasted line identifies both halves (MobileRead 374939 #21). It comes from
+  the same `PLUGIN_VERSION_TUPLE` calibre reads for Preferences, so there is
+  no second copy to bump. Most of what has gone wrong in these plugins so far
+  was the plugin rather than the validator, which makes it the more useful of
+  the two numbers to have been missing.
+
+- **The archive is now `epubveri_calibre_vX.Y.Z.zip`.** Both plugins shipped
+  a file called `epubveri_vX.Y.Z.zip`, so a download said nothing about which
+  editor it was for and the two names collided outright once the versions met
+  (PeterT, MobileRead 374286 #275). calibre reads the plugin name from the
+  class and the import-name marker, so its archive name means nothing to it
+  and was free to change; the Sigil one had to keep `epubveri` before the
+  first underscore.
+
+- **The test harness now runs the real `__init__.py`.** Its stand-in for
+  `calibre_plugins.epubveri` was an empty module with a search path, so the
+  package the tests saw had none of the constants the package really defines
+  — a module-level import of `PLUGIN_VERSION` worked inside calibre and
+  failed here. A harness that differs from production in what it *defines*
+  keeps producing that shape of failure.
+
 ## [0.1.0] — 2026-09-03
 
 Written and, for the first time, **exercised inside calibre**: the plugin
