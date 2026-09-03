@@ -40,6 +40,18 @@ class EpubVeriPlugin(EditBookToolPlugin):
     #: Preferences / Plugins / Customize. So this plugin asks rather than
     #: guessing. The Sigil plugin has to put the same choice in its JSON
     #: preferences file, because Sigil offers nowhere to ask.
+    #: **Defining `config_widget` is not what opens the settings page.**
+    #: Preferences / Plugins / Customize asks `is_customizable()` first and
+    #: says "Plugin: epubveri does not need customization" when it is false
+    #: (`gui2/preferences/plugins.py`). The base implementation answers by
+    #: calling `customization_help()` and catching NotImplementedError — and
+    #: that method is for the *other* customization mechanism, the single
+    #: `site_customization` string, which this plugin does not use. So the
+    #: answer is given directly rather than by raising nothing from a method
+    #: that means something else.
+    def is_customizable(self):
+        return True
+
     def config_widget(self):
         from calibre_plugins.epubveri.main import ConfigWidget
         return ConfigWidget()

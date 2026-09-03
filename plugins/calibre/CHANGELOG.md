@@ -38,6 +38,14 @@ not been driven by hand — no menu has been clicked — so this is not a releas
   - **`clone_dir` requires its destination to exist**, which its docstring
     says and the first run proved: without `os.makedirs` it fails on
     `META-INF`. Found by running it, not by reading it.
+- **`is_customizable()` has to say so.** Providing `config_widget` and
+  `save_settings` is not what opens the settings page: Preferences → Plugins →
+  Customize asks `is_customizable()` first and otherwise answers "Plugin:
+  epubveri does not need customization" (`gui2/preferences/plugins.py`). The
+  base implementation decides by calling `customization_help()` and catching
+  `NotImplementedError`, and that method belongs to calibre's *other*
+  customization mechanism — the single `site_customization` string — which
+  this plugin does not use. Found by the owner on the first click.
 - **A settings page** (*Preferences → Plugins → Customize*) with three
   checkboxes: automatic updates, show usage notes, show advisory findings.
   All three default to on, so out of the box calibre and Sigil report the same
