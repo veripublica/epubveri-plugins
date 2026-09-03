@@ -163,9 +163,13 @@ def stub_tool():
     `Tool.gui` and `Tool.boss` are properties that reach for a live editor, so
     they are overridden rather than stubbed by assignment.
     """
-    from qt.core import QWidget
+    # A QMainWindow, not a bare QWidget: `Tool.gui` is `tweak_book.ui.Main`,
+    # whose MRO is Main -> MainWindow -> QMainWindow, and the results dock is
+    # added to it. A stub that cannot hold a dock is a stub that tests
+    # something production never does.
+    from qt.core import QMainWindow
     qt_app()
-    window = QWidget()
+    window = QMainWindow()
     window.keyboard = StubKeyboard()
 
     class Stubbed(plugin.EpubVeriTool):
@@ -449,20 +453,25 @@ class ActionTests(unittest.TestCase):
             plugin.EpubVeriTool.name + '_'))
 
 
-class ResultsDialogTests(unittest.TestCase):
+class ResultsPanelTests(unittest.TestCase):
     """The view has never been built by anything but a person clicking."""
 
-    def test_every_finding_becomes_a_row_that_says_what_it_is(self):
+    def _panel(self, findings, summary='summary'):
         tool = stub_tool()
-        findings = [Finding('error'),
-                    Finding('usage', code='OPF-097'),
-                    Finding('usage', advisory=True, code='ADV-010',
-                            location='OEBPS/content.opf', line=91, column=5)]
-        dialog = plugin.ResultsDialog(tool, findings, 'summary')
-        self.assertEqual(dialog.items.topLevelItemCount(), 3)
-        labels = [dialog.items.topLevelItem(i).text(0) for i in range(3)]
+        panel = plugin.ResultsPanel(tool)
+        panel.show_results(findings, summary)
+        return panel
+
+    def test_every_finding_becomes_a_row_that_says_what_it_is(self):
+        panel = self._panel([
+            Finding('error'),
+            Finding('usage', code='OPF-097'),
+            Finding('usage', advisory=True, code='ADV-010',
+                    location='OEBPS/content.opf', line=91, column=5)])
+        self.assertEqual(panel.items.topLevelItemCount(), 3)
+        labels = [panel.items.topLevelItem(i).text(0) for i in range(3)]
         self.assertEqual(labels, ['ERROR', 'USAGE', 'ADVISORY'])
-        last = dialog.items.topLevelItem(2)
+        last = panel.items.topLevelItem(2)
         self.assertEqual(last.text(1), 'OEBPS/content.opf')
         self.assertEqual(last.text(2), '91')
         self.assertIn('ADV-010', last.text(3))
@@ -472,25 +481,79 @@ class ResultsDialogTests(unittest.TestCase):
         self.assertEqual(last.data(0, Qt.ItemDataRole.UserRole),
                          ('OEBPS/content.opf', 91, 5))
 
-    def test_a_clean_book_still_opens_a_window(self):
+    def test_a_clean_book_still_fills_the_panel(self):
         """Zero findings is the commonest happy case and the easiest one to
         build a view that crashes on."""
-        tool = stub_tool()
-        dialog = plugin.ResultsDialog(tool, [], 'epubveri — VALID')
-        self.assertEqual(dialog.items.topLevelItemCount(), 0)
-        self.assertIn('VALID', dialog.summary.text())
+        panel = self._panel([], 'epubveri — VALID')
+        self.assertEqual(panel.items.topLevelItemCount(), 0)
+        self.assertIn('VALID', panel.summary.text())
+
+    def test_showing_again_replaces_the_rows_rather_than_appending(self):
+        """The panel is reused, so nothing else clears it."""
+        panel = self._panel([Finding('error'), Finding('error')], 'first')
+        self.assertEqual(panel.items.topLevelItemCount(), 2)
+        panel.show_results([Finding('usage')], 'second')
+        self.assertEqual(panel.items.topLevelItemCount(), 1)
+        self.assertEqual(panel.summary.text(), 'second')
 
     def test_a_finding_with_no_file_neither_crashes_nor_navigates(self):
         """Container-level findings carry no location. Activating one must do
         nothing rather than raise inside Qt's event handler."""
-        tool = stub_tool()
-        dialog = plugin.ResultsDialog(
-            tool, [Finding('error', location=None, line=None, column=None)],
-            'summary')
-        item = dialog.items.topLevelItem(0)
+        panel = self._panel(
+            [Finding('error', location=None, line=None, column=None)])
+        item = panel.items.topLevelItem(0)
         self.assertEqual(item.text(1), '')
         self.assertEqual(item.text(2), '')
-        self.assertIsNone(dialog.go_to(item))
+        self.assertIsNone(panel.go_to(item))
+
+
+class ResultsDockTests(unittest.TestCase):
+    """Doitsu asked for a dock rather than a window (MobileRead 374940 #16);
+    JSWolf said that was more than a nitpick (#17)."""
+
+    def test_the_dock_is_built_once_though_create_action_is_called_twice(self):
+        """calibre calls `create_action` for the toolbar and again for the
+        menu, on one instance. It also swallows an exception from it — the
+        traceback goes to stderr and the tool vanishes from the menu with
+        nothing on screen — so a second dock here would be close to
+        invisible."""
+        tool = stub_tool()
+        tool.create_action(for_toolbar=True)
+        tool.create_action(for_toolbar=False)
+        from qt.core import QDockWidget
+        docks = tool.window.findChildren(QDockWidget)
+        self.assertEqual(len(docks), 1, docks)
+        self.assertIs(docks[0], tool._dock)
+
+    def test_the_dock_carries_the_name_calibre_saves_its_position_under(self):
+        """calibre's own docks set an objectName with the comment "Needed for
+        saveState". Without one Qt cannot restore where the user put it."""
+        tool = stub_tool()
+        tool.create_action()
+        self.assertEqual(tool._dock.objectName(), tool.DOCK_OBJECT_NAME)
+        self.assertTrue(tool._dock.objectName())
+
+    def test_it_starts_hidden_and_a_validation_brings_it_up(self):
+        """Nothing should appear until the user asks for a validation, which
+        is how calibre brings up Live CSS."""
+        tool = stub_tool()
+        tool.create_action()
+        self.assertFalse(tool._dock.isVisibleTo(tool.window))
+        tool._show(Envelope([Finding('error')]), None)
+        self.assertTrue(tool._dock.isVisibleTo(tool.window))
+
+    def test_validating_twice_reuses_the_one_dock(self):
+        """The dialog this replaces had to close its predecessor by hand, or
+        three validations left three windows and two of them described a book
+        that had since been edited."""
+        tool = stub_tool()
+        tool._show(Envelope([Finding('error')]), None)
+        first = tool._dock
+        tool._show(Envelope([Finding('usage')]), None)
+        self.assertIs(tool._dock, first)
+        from qt.core import QDockWidget
+        self.assertEqual(len(tool.window.findChildren(QDockWidget)), 1)
+        self.assertIn('1 usage note(s)', tool._panel.summary.text())
 
 
 class Envelope(object):
@@ -519,7 +582,7 @@ class SummaryTests(unittest.TestCase):
     def _summary(self, findings):
         tool = stub_tool()
         tool._show(Envelope(findings), None)
-        return tool._results.summary.text()
+        return tool._panel.summary.text()
 
     def test_advisories_are_not_counted_as_usage_notes_as_well(self):
         findings = [Finding('usage'), Finding('usage'),
@@ -569,17 +632,6 @@ class SummaryTests(unittest.TestCase):
             self.assertIn('Customize', text)
         finally:
             plugin.prefs['show_advisory'] = saved
-
-    def test_validating_twice_replaces_the_window_rather_than_stacking(self):
-        """The dialog is non-modal, so nothing stops them accumulating — and
-        an old one reports a book that has since been edited."""
-        tool = stub_tool()
-        tool._show(Envelope([Finding('error')]), None)
-        first = tool._results
-        tool._show(Envelope([Finding('usage')]), None)
-        self.assertIsNot(tool._results, first)
-        self.assertFalse(first.isVisible())
-        self.assertIn('1 usage note(s)', tool._results.summary.text())
 
     def test_nothing_is_said_about_settings_when_nothing_is_hidden(self):
         text = self._summary([Finding('error')])

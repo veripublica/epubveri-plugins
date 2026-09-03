@@ -42,6 +42,11 @@ there is no plugin folder to put anything in.
 
 ## Reading the results
 
+Results appear in a **dock**, beside Check Book, File browser and the rest.
+Drag it where you want it, tab it behind another panel, or close it — calibre
+remembers where you put it, and a validation brings it back. It stays hidden
+until you run one.
+
 Every finding gets a row with its file, line and message, labelled `ERROR`,
 `WARNING`, `USAGE` or `ADVISORY`. **Activating a row opens the file and puts
 the cursor on the line**, the same way calibre's own Check Book results do.

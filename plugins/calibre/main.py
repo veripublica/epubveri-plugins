@@ -40,9 +40,8 @@ from calibre.constants import config_dir
 from calibre.gui2 import error_dialog
 from calibre.gui2.tweak_book.plugin import Tool
 from calibre.utils.config import JSONConfig
-from qt.core import (QAbstractItemView, QCheckBox, QDialog, QDialogButtonBox,
-                     QLabel, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
-                     QWidget, Qt)
+from qt.core import (QAbstractItemView, QCheckBox, QDockWidget, QLabel,
+                     QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, Qt)
 
 # The plugin's own package, never a bare `from client import ...` with the
 # plugin folder pushed onto sys.path: `client` is a name any other plugin
@@ -315,29 +314,32 @@ class ConfigWidget(QWidget):
         prefs['show_advisory'] = self.show_advisory.isChecked()
 
 
-class ResultsDialog(QDialog):
-    """The findings, and a way to get to each one.
+class ResultsPanel(QWidget):
+    """The findings, and a way to get to each one. Lives in a dock.
 
-    calibre's own Check Book panel cannot be used: `run_checks` calls
-    calibre's checkers directly and takes no plugin, so there is no hook to
-    add to it. A dialog of our own is the honest alternative — reaching into
-    that panel would mean depending on its internals, which is how a plugin
-    breaks on someone else's refactor.
+    **Not calibre's Check Book panel**, which cannot be used: `run_checks`
+    calls calibre's own checkers directly and takes no plugin, so there is no
+    hook to add to it. Reaching into it anyway would mean depending on its
+    internals, which is how a plugin breaks on someone else's refactor.
 
-    Non-modal on purpose: activating a row moves the editor behind it, and a
-    modal dialog would make that useless.
+    A dock of our own is as close as a plugin can get, and it is what Doitsu
+    asked for (MobileRead 374940 #16), with JSWolf adding that it was more
+    than a nitpick (#17). It replaces a non-modal dialog that had the right
+    behaviour and the wrong shape: docking, tabbing and a remembered position
+    are what a panel gets for free and a floating window never does.
     """
 
-    def __init__(self, tool, findings, summary):
-        QDialog.__init__(self, tool.gui)
+    def __init__(self, tool, parent=None):
+        QWidget.__init__(self, parent)
         self.tool = tool
-        self.setWindowTitle('epubveri')
-        self.setWindowFlag(Qt.WindowType.Window)
-        self.resize(900, 500)
 
         layout = QVBoxLayout(self)
-        self.summary = QLabel(summary, self)
+        # A dock is narrower than the dialog was; the summary has to wrap
+        # rather than set the panel's minimum width.
+        self.summary = QLabel('', self)
         self.summary.setWordWrap(True)
+        self.summary.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.summary)
 
         self.items = QTreeWidget(self)
@@ -351,6 +353,16 @@ class ResultsDialog(QDialog):
         self.items.itemDoubleClicked.connect(self.go_to)
         layout.addWidget(self.items)
 
+    def show_results(self, findings, summary):
+        """Replace what is displayed. One panel, reused.
+
+        The dialog this replaces was created afresh each run and the old one
+        closed, because two non-modal windows would otherwise accumulate and
+        the older would describe a book that had since been edited. A dock is
+        a single object, so the same guarantee comes from clearing it.
+        """
+        self.summary.setText(summary)
+        self.items.clear()
         for finding in findings:
             item = QTreeWidgetItem(self.items)
             item.setText(0, _label(finding))
@@ -367,10 +379,6 @@ class ResultsDialog(QDialog):
                          (finding.location, finding.line, finding.column))
         for column in range(3):
             self.items.resizeColumnToContents(column)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
 
     def go_to(self, item):
         """Open the file and put the cursor on the finding.
@@ -461,8 +469,60 @@ class EpubVeriTool(Tool):
     allowed_in_toolbar = True
     allowed_in_menu = True
 
+    #: The name calibre's `saveState` keys the dock's position on. It must
+    #: not change: a saved layout that no longer matches loses the position
+    #: the user put the panel in.
+    DOCK_OBJECT_NAME = 'epubveri-results-dock'
+
+    def _ensure_dock(self):
+        """The results dock, created once and then reused.
+
+        **Created from `create_action`, and the timing is the whole reason.**
+        `Main.__init__` runs `create_actions()` — which constructs this tool
+        and calls `create_action` — before `create_docks()`, and defers
+        `restore_state` to `QTimer.singleShot(0, ...)` at the end. So a dock
+        added here exists before `restoreState` runs, and **calibre remembers
+        its area, size and visibility for us**; there is nothing of ours to
+        store. Adding it later, on the first validation, would put it back in
+        the default corner every session.
+
+        `self.gui` is safe this early: `Main.__init__` assigns `self.boss =
+        Boss(self)` before `create_actions()`, and `Boss.__init__` sets both
+        the module-level `_boss` and `self.gui = parent` before it returns.
+        Worth having checked rather than assumed — `QAction(text, None)` is
+        legal, so the action this method sits beside would not have complained
+        about a `gui` that was not there yet, and `addDockWidget` would.
+
+        **`create_action` is called twice** — once for the toolbar and once
+        for the menu, on this same instance — so this is guarded. calibre
+        *swallows* an exception from `create_action`: `create_plugin_action`
+        prints a traceback to stderr and drops the tool from the menu with
+        nothing on screen, so a second dock or a raise here would be close to
+        invisible.
+        """
+        dock = getattr(self, '_dock', None)
+        if dock is not None:
+            return dock
+        dock = QDockWidget('epubveri', self.gui)
+        dock.setObjectName(self.DOCK_OBJECT_NAME)   # needed for saveState
+        dock.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea
+            | Qt.DockWidgetArea.RightDockWidgetArea
+            | Qt.DockWidgetArea.TopDockWidgetArea
+            | Qt.DockWidgetArea.BottomDockWidgetArea)
+        self._panel = ResultsPanel(self, dock)
+        dock.setWidget(self._panel)
+        # The area Check Book uses, since that is the panel this one is meant
+        # to sit beside. Hidden until the first validation, the way calibre
+        # brings up Live CSS.
+        self.gui.addDockWidget(Qt.DockWidgetArea.TopDockWidgetArea, dock)
+        dock.close()
+        self._dock = dock
+        return dock
+
     def create_action(self, for_toolbar=True):
         from qt.core import QAction
+        self._ensure_dock()
         action = QAction('Validate with epubveri', self.gui)
         action.triggered.connect(self.validate)
         if not for_toolbar:
@@ -561,14 +621,10 @@ class EpubVeriTool(Tool):
         if update_note:
             summary += '\n[%s]' % update_note
 
-        # A second validation replaces the first window rather than opening
-        # another beside it. The dialog is non-modal on purpose — activating a
-        # row moves the editor behind it — and without this, validating three
-        # times leaves three windows, two of them reporting a book that has
-        # since been edited.
-        previous = getattr(self, '_results', None)
-        if previous is not None:
-            previous.close()
-        # Kept on the tool so Python does not collect a non-modal dialog.
-        self._results = ResultsDialog(self, shown, summary)
-        self._results.show()
+        # One dock, cleared and refilled. The dialog this replaces had to
+        # close its predecessor by hand or validating three times left three
+        # windows, two of them describing a book that had since been edited.
+        dock = self._ensure_dock()
+        self._panel.show_results(shown, summary)
+        dock.show()
+        dock.raise_()

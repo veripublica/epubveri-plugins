@@ -5,6 +5,30 @@ calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
 ## [0.1.1] — unreleased
 
+- **The results are a dock now, not a window.** Doitsu asked for one "like
+  Calibre's check book tool" (MobileRead 374940 #16) and JSWolf said that was
+  more than a nitpick (#17). They were right: the dialog had the correct
+  behaviour and the wrong shape. Docking, tabbing behind another panel, and a
+  position that is still there next week are what a panel gets for free and a
+  floating window never does.
+
+  This is **not** calibre's own Check Book panel, which stays closed to
+  plugins — `run_checks` calls calibre's checkers directly and takes no
+  plugin. A dock of our own is as close as a plugin can get.
+
+  Two details make it behave like calibre's own. It is created from
+  `create_action`, which `Main.__init__` runs *before* `create_docks()` and
+  well before it defers `restore_state`, so the dock exists by the time
+  `restoreState` runs and **calibre remembers its area, size and visibility
+  for us** — there is nothing of ours stored anywhere. And it carries an
+  `objectName`, which is what that restore is keyed on; calibre's own docks
+  set one with the comment "Needed for saveState".
+
+  It starts hidden and a validation brings it up, the way Live CSS does.
+  Validating again clears and refills the one panel: the dialog had to close
+  its predecessor by hand or three validations left three windows, two of them
+  describing a book that had since been edited.
+
 - **The summary names the plugin's version as well as epubveri's** —
   `epubveri 0.13.3 (plugin 0.1.1) — VALID …`. Asked for by Doitsu so that a
   pasted line identifies both halves (MobileRead 374939 #21). It comes from
