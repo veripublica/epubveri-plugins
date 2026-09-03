@@ -6,6 +6,6 @@
 <description>Validate the current book with epubveri, a fast JVM-free EPUB validator.</description>
 <autostart>true</autostart>
 <engine>python3.4</engine>
-<version>0.1.0</version>
+<version>0.1.1</version>
 <oslist>unx,win,osx</oslist>
 </plugin>

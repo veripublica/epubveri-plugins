@@ -35,6 +35,20 @@ _SIGIL_TYPE = {
     "usage": "info",
 }
 
+# A result that is about the book as a whole has no file, and **the empty
+# string is not how you say so**. Sigil's result table resolves the bookpath
+# to a resource and, when that fails, prints "*** Invalid Book Path Provided
+# ***" for an empty one and the string itself for anything else
+# (`ValidationResultsView::DisplayResults`). A single space is neither empty
+# nor a path, so the File column comes out blank, which is what a summary line
+# wants. Nothing trims it on the way: the launcher interpolates the attribute
+# and XML attribute-value normalization leaves a space alone.
+#
+# Reported by DNSB on Windows (MobileRead 374939 #16), on the summary line.
+# The same empty string was in seven other places, including every finding
+# epubveri reports about the container rather than a file.
+_NO_FILE = " "
+
 # **Every finding is shown, and there are no settings.** Sigil offers a plugin
 # no configuration screen — Manage Plugins lists name, version, author, type,
 # engine and platforms and nothing else — so a preference here would be a
@@ -427,7 +441,7 @@ def _report(bk, envelope, workdir):
         # `location` is a full container-relative path and Sigil wants exactly
         # that as the bookpath. Reducing it to a basename is how a plugin sends
         # the cursor into the wrong file when two folders hold the same name.
-        bookpath = finding.location or ""
+        bookpath = finding.location or _NO_FILE
         line = finding.line or -1
         offset = _char_offset(workdir, finding.location,
                               finding.line, finding.column)
@@ -447,12 +461,13 @@ def run(bk):
     try:
         binary, update_note = _ensure_binary(bk)
     except Exception as exc:                           # noqa: BLE001
-        bk.add_result("error", "", -1, _xml_attr(_install_failure(exc)))
+        bk.add_result("error", _NO_FILE, -1, _xml_attr(_install_failure(exc)))
         return -1
 
     if binary is None:
         # Integrity check failed. Nothing is executed.
-        bk.add_result("error", "", -1, _xml_attr("epubveri: %s" % update_note))
+        bk.add_result("error", _NO_FILE, -1,
+                      _xml_attr("epubveri: %s" % update_note))
         return -1
 
     tmpdir = tempfile.mkdtemp(prefix="epubveri-sigil-")
@@ -462,15 +477,16 @@ def run(bk):
             # `-u` and `--advisory` always; the panel shows everything.
             envelope = runner.run_epubveri(binary, epub_path)
         except EnvelopeError as exc:
-            bk.add_result("error", "", -1, _xml_attr("epubveri: %s" % exc))
+            bk.add_result("error", _NO_FILE, -1,
+                          _xml_attr("epubveri: %s" % exc))
             return -1
         except Exception as exc:                       # noqa: BLE001
-            bk.add_result("error", "", -1,
+            bk.add_result("error", _NO_FILE, -1,
                           _xml_attr("epubveri failed to run: %s" % exc))
             return -1
 
         if envelope.could_not_read:
-            bk.add_result("error", "", -1, _xml_attr(
+            bk.add_result("error", _NO_FILE, -1, _xml_attr(
                 "epubveri could not read the book: %s"
                 % (envelope.error or "no reason given")))
             return -1
@@ -500,7 +516,7 @@ def run(bk):
                        % ", ".join(extra)
         if update_note:
             summary += " [%s]" % update_note
-        bk.add_result("info", "", -1, _xml_attr(summary))
+        bk.add_result("info", _NO_FILE, -1, _xml_attr(summary))
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
     return 0

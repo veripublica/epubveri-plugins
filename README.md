@@ -11,7 +11,7 @@ The editing is the editor's; the verdict is epubveri's.
 
 | plugin | for | status |
 |---|---|---|
-| [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | **released — [0.1.0](https://github.com/veripublica/epubveri-plugins/releases/tag/sigil-v0.1.0)** |
+| [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | **released — [0.1.1](https://github.com/veripublica/epubveri-plugins/releases/tag/sigil-v0.1.1)** |
 | [`plugins/calibre`](plugins/calibre) | calibre's Edit Book | **not released**, and not finished — see its README |
 
 **Each plugin has its own README, its own changelog and its own version.**
@@ -26,7 +26,7 @@ from a folder, so there is always a zip to fetch.
 
 Only the **Sigil** plugin is released so far;
 [its README](plugins/sigil/README.md) has the steps. Releases are tagged per
-plugin (`sigil-v0.1.0`), because the two are versioned independently.
+plugin (`sigil-v0.1.1`), because the two are versioned independently.
 
 **Check what you downloaded** if you like: each release publishes a
 `SHA256SUMS.txt` beside the zip.

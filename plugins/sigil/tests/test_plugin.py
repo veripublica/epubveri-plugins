@@ -73,6 +73,12 @@ FILES = {
 }
 
 
+def _now():
+    """Aware UTC, as the plugin writes it. `utcnow()` is deprecated in
+    the Python Sigil bundles."""
+    return datetime.now(timezone.utc)
+
+
 class FakeBk(object):
     """The four container methods the plugin uses, and nothing else."""
 
@@ -80,7 +86,7 @@ class FakeBk(object):
         # Seeded so the hourly update check is not due: these tests must not
         # touch the network, and a test that quietly does is a test that fails
         # on an aeroplane.
-        self.prefs = {"last_update_check": datetime.utcnow().isoformat()}
+        self.prefs = {"last_update_check": _now().isoformat()}
         self.prefs.update(prefs or {})
         self.results = []
 
@@ -314,7 +320,7 @@ class UpdateTests(unittest.TestCase):
         plugin._ensure_binary(recent)
         self.assertEqual(self.downloads, [], "checked again within the hour")
 
-        old = datetime.utcnow() - timedelta(hours=2)
+        old = _now() - timedelta(hours=2)
         stale = FakeBk({"last_update_check": old.isoformat(),
                         "installed_sha256": self.SHA_A})
         plugin._ensure_binary(stale)
@@ -569,6 +575,11 @@ class PackageTests(unittest.TestCase):
             # And the things a user should get, but never the cached binary.
             self.assertIn("%s/README.md" % expected, names)
             self.assertIn("%s/LICENSE" % expected, names)
+            # The icon Sigil looks for. It is loaded from the plugin folder by
+            # name (`PluginDB::load_plugin` prefers svg to png), so leaving it
+            # out of the archive is the same as not having one.
+            self.assertIn("%s/plugin.svg" % expected, names)
+            self.assertIn("%s/plugin.png" % expected, names)
             self.assertFalse([n for n in names if n.endswith("/epubveri")])
             self.assertFalse([n for n in names if "/tests/" in n])
         finally:
@@ -649,6 +660,37 @@ class RunTests(unittest.TestCase):
         errors = [r for r in bk.results if r[0] == "error"]
         self.assertFalse([r for r in errors if "ADVISORY" in r[4]],
                          "an advisory was given Sigil's error type")
+
+    def test_no_result_is_given_an_empty_bookpath(self):
+        """Sigil prints "*** Invalid Book Path Provided ***" for one.
+
+        A result about the book as a whole has no file, and the empty string
+        is how the table is told to complain about it rather than how it is
+        told there is none. Reported by DNSB on Windows for the summary line
+        (MobileRead 374939 #16); the same empty string was in seven other
+        places, so this asserts over every result the run produces.
+        """
+        bk = FakeBk()
+        plugin.run(bk)
+        self.assertTrue(bk.results)
+        self.assertFalse([r for r in bk.results if r[1] == ""],
+                         "an empty bookpath reaches Sigil's result table")
+
+    def test_a_failure_before_the_book_is_read_also_names_no_file(self):
+        """The error paths carry the same rule, and none of them has a file
+        to name — the binary is missing, or was replaced, or would not run."""
+        def explode(_bk):
+            raise OSError("no network")
+        orig = plugin._ensure_binary
+        plugin._ensure_binary = explode
+        try:
+            bk = FakeBk()
+            self.assertEqual(plugin.run(bk), -1)
+        finally:
+            plugin._ensure_binary = orig
+        self.assertEqual(len(bk.results), 1)
+        self.assertEqual(bk.results[0][0], "error")
+        self.assertNotEqual(bk.results[0][1], "")
 
 
 if __name__ == "__main__":

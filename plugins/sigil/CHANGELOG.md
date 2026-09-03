@@ -3,6 +3,35 @@
 This plugin is versioned independently of the calibre plugin and of epubveri
 itself. The version Sigil shows comes from `plugin.xml`.
 
+## [0.1.1] — 2026-09-03
+
+Both items reported the day 0.1.0 shipped, by DNSB on Windows
+(MobileRead 374939 #16). Doitsu diagnosed the first one.
+
+- **A result about the book as a whole no longer says "*** Invalid Book Path
+  Provided ***".** The summary line named no file by passing an empty string,
+  and an empty bookpath is how Sigil's result table is told to complain rather
+  than how it is told there is none: `ValidationResultsView::DisplayResults`
+  prints that text for an empty path and the path itself for anything else. It
+  now passes a single space, which is neither empty nor a path, so the File
+  column comes out blank. Doitsu's suggestion was `None`, which also clears the
+  message; it reaches the table as the literal word "None", so a space is used
+  instead. Reported against the summary line, and the same empty string was in
+  seven other places — every failure before the book is read, and **every
+  finding epubveri reports about the container rather than about a file**. All
+  of them are fixed, and no result may carry an empty bookpath now: a test
+  asserts it over the whole run.
+- **The plugin has an icon**, so Manage Plugins and the toolbar show something
+  other than a placeholder. Shipped as `plugin.svg` with a `plugin.png`
+  beside it, which is the order Sigil looks in. It is a filled tile rather
+  than a line drawing because Sigil has a dark theme too, and a single-colour
+  outline vanishes into one of the two.
+
+Also confirmed by this thread, and worth recording because 0.1.0 said the
+opposite was unknown: it runs on **Windows** (DNSB) and on **Linux**, the
+AppImage build on an Intel Chromebook (PeterT). At release, two people had run
+it on macOS and nobody had tried it anywhere else.
+
 ## [0.1.0] — 2026-09-03
 
 First version. An independent implementation: Doitsu's plugin proved the idea
