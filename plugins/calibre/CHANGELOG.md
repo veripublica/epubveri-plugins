@@ -3,7 +3,7 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-09-03
 
 Written and, for the first time, **exercised inside calibre**: the plugin
 installs, registers as an Edit Book tool and imports. The GUI itself has still

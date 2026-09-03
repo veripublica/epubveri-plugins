@@ -12,7 +12,7 @@ The editing is the editor's; the verdict is epubveri's.
 | plugin | for | status |
 |---|---|---|
 | [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | **released — [0.1.1](https://github.com/veripublica/epubveri-plugins/releases/tag/sigil-v0.1.1)** |
-| [`plugins/calibre`](plugins/calibre) | calibre's Edit Book | **not released**, and not finished — see its README |
+| [`plugins/calibre`](plugins/calibre) | [calibre](https://calibre-ebook.com/)'s Edit Book | **released — [0.1.0](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-v0.1.0)** |
 
 **Each plugin has its own README, its own changelog and its own version.**
 Start there: this file is only about the repository.
@@ -24,9 +24,14 @@ Download the zip from
 from this source tree. Both editors install a plugin **from a zip file**, never
 from a folder, so there is always a zip to fetch.
 
-Only the **Sigil** plugin is released so far;
-[its README](plugins/sigil/README.md) has the steps. Releases are tagged per
-plugin (`sigil-v0.1.1`), because the two are versioned independently.
+Each plugin's README has the steps — they differ, and neither editor forgives
+getting it wrong: [Sigil](plugins/sigil/README.md) unpacks the zip and takes
+the plugin's folder name from the filename, so **do not rename it**;
+[calibre](plugins/calibre/README.md) imports straight out of the zip and never
+unpacks it. Releases are tagged per plugin (`sigil-v0.1.1`,
+`calibre-v0.1.0`), because the two are versioned independently — the tag says
+which editor a release is for, and **GitHub's "Latest" badge only means newest
+by date**, not newest for your editor.
 
 **Check what you downloaded** if you like: each release publishes a
 `SHA256SUMS.txt` beside the zip.
