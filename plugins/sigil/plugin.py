@@ -681,33 +681,43 @@ def run(bk):
             summary += "; %s hidden by your settings" % ", ".join(hidden)
         if update_note:
             summary += " [%s]" % update_note
-        # **The summary is never a result. It is printed.**
+        # **The summary is a result only when there is another one.**
         #
         # A validation result is not a neutral place to put a sentence: it is
-        # how Sigil is told the book has a problem. `Automation` has exactly
-        # three outcomes for a validation plugin, and its own strings say so —
+        # how Sigil is told the book has a problem. `Automation` has three
+        # outcomes for a validation plugin and its own binary names them —
         # "Validation Tool Reported No Problems Found", "Aborted due to
         # Validation Errors", "Ignored Validation Errors". Zero results is the
         # first; **one result of any severity is the second**, `info`
-        # included. So a summary row stopped every automation list that
-        # contained this plugin, on every book, including the clean ones.
-        # Reported by DNSB (MobileRead 374939 #23, #29) and confirmed by
-        # BeckyEbook, who tried removing the line (#28).
+        # included. So an unconditional summary row aborted every automation
+        # list containing this plugin, on every book, clean ones included
+        # (DNSB, MobileRead 374939 #23 and #29; BeckyEbook confirmed it in #28
+        # by deleting the line).
         #
-        # Two earlier shapes were wrong for one shared reason. Both kept the
-        # line as a *row* on a clean book, to avoid an empty panel that would
-        # look like a plugin which had failed to run. **That panel is not
-        # empty**: Sigil writes "Validation Tool Reported No Problems Found"
-        # into it. The premise was never checked, and everything built on it
-        # was answering a problem Sigil had already solved.
+        # But the condition that fixes that is narrower than "never a result".
+        # **If the book already has findings, the list was going to abort on
+        # them anyway**, so a summary row beside them changes nothing for
+        # automation — and it is the one place the reader is actually looking.
+        # Only the clean book has to stay silent, and it loses nothing: Sigil
+        # writes "Validation Tool Reported No Problems Found" into an empty
+        # panel by itself.
         #
-        # Printing loses nothing. `<msg>` reaches the plugin's output window on
-        # both the success and the failure path, which is where `_fail` puts
-        # its reasons for the same reason. DiapDealer said this in #26 and
-        # DNSB in #29: the errors are in the results box, the summary belongs
-        # somewhere that is not a finding.
+        # It is printed instead when there is nothing to sit beside. That
+        # channel is real but not visible in ordinary use: `<msg>` reaches the
+        # Plugin Runner window, and `<autostart>true</autostart>` means that
+        # window is never shown for a run that succeeds — Sigil goes straight
+        # to the results. So printing is where the line goes when it has
+        # nowhere better, not a place to put something a user needs.
+        #
+        # Three earlier shapes were wrong, and every one of them rested on a
+        # guess about Sigil's interface rather than a check: that an empty
+        # panel is silent (it is not), and that the output window is somewhere
+        # a reader will look (it is not shown at all).
         if show["summary"]:
-            print(summary)
+            if counts["shown"]:
+                bk.add_result("info", _NO_FILE, -1, _xml_attr(summary))
+            else:
+                print(summary)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
     return 0

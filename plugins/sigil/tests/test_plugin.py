@@ -134,6 +134,18 @@ def _binary():
     return path if os.path.isfile(path) else None
 
 
+def summary_of(texts, out):
+    """The summary line, from wherever it went.
+
+    It rides with the findings when there are any and is printed when there
+    are none, so a test about what it *says* should not have to know which.
+    The tests about where it *goes* are separate and explicit — that is the
+    part that has been wrong three times.
+    """
+    rows = [t for t in texts if t.startswith("epubveri ")]
+    return rows[-1] if rows else out
+
+
 def run_capturing(bk):
     """`(result texts, stdout)`.
 
@@ -656,17 +668,14 @@ class RunTests(unittest.TestCase):
     def tearDown(self):
         plugin._binary_path = self._orig
 
-    def test_findings_carry_a_full_bookpath_and_the_summary_is_printed(self):
+    def test_findings_carry_a_full_bookpath_and_a_summary(self):
         bk = FakeBk()
         code, texts, out = run_capturing(bk)
         self.assertEqual(code, 0)
         self.assertTrue(bk.results, "the run produced nothing")
-        self.assertIn("epubveri", out)
-        # And not in the table: a result is how Sigil is told the book has a
-        # problem, which is why Automation aborts a list on any of them.
-        self.assertFalse([t for t in texts if t.startswith("epubveri ")],
-                         texts)
-        self.assertIn("NOT VALID", out, "the book has an empty dc:creator")
+        summary = summary_of(texts, out)
+        self.assertIn("NOT VALID", summary,
+                      "the book has an empty dc:creator")
         # The empty dc:creator, reported against the package document by its
         # full path rather than "content.opf".
         creators = [r for r in bk.results if "dc:creator" in r[4]]
@@ -697,7 +706,8 @@ class RunTests(unittest.TestCase):
         self.assertTrue(any(t.startswith("ERROR RSC-005") for t in texts), texts)
 
     def test_the_summary_separates_what_decides_the_verdict(self):
-        _code, _texts, summary = run_capturing(FakeBk())
+        _code, texts, out = run_capturing(FakeBk())
+        summary = summary_of(texts, out)
         # Errors and warnings decide it; the rest is listed as not deciding it.
         self.assertIn("2 error(s)", summary)
         self.assertIn("1 usage note(s)", summary)
@@ -713,8 +723,8 @@ class RunTests(unittest.TestCase):
         VALID for reasons that have nothing to do with the advisory, and the
         advisory must not be among the counted errors."""
         bk = FakeBk()
-        _code, _texts, summary = run_capturing(bk)
-        self.assertIn("NOT VALID", summary)
+        _code, texts, out = run_capturing(bk)
+        self.assertIn("NOT VALID", summary_of(texts, out))
         errors = [r for r in bk.results if r[0] == "error"]
         self.assertFalse([r for r in errors if "ADVISORY" in r[4]],
                          "an advisory was given Sigil's error type")
@@ -823,8 +833,8 @@ class DisplaySettingsTests(unittest.TestCase):
         defects on record whose only symptom was silence, and a settings-driven
         silence is the same shape. It is also the only way a Sigil user can
         discover that a switch exists at all."""
-        self._run({"show_usage": False, "show_advisory": False})
-        summary = self.out
+        _bk, texts = self._run({"show_usage": False, "show_advisory": False})
+        summary = summary_of(texts, self.out)
         self.assertIn("1 usage note(s)", summary)
         self.assertIn("1 advisory finding(s) epubcheck does not make", summary)
         self.assertIn("hidden by your settings", summary)
@@ -834,13 +844,14 @@ class DisplaySettingsTests(unittest.TestCase):
         """`-u --advisory` go on every run whatever the settings say, so the
         numbers describe the book and not the preferences. Compare the two
         summaries: the same counts, differently placed."""
-        self._run()
-        shown = self.out
-        self._run({"show_usage": False, "show_advisory": False})
+        _bk, texts = self._run()
+        shown = summary_of(texts, self.out)
+        _bk, texts = self._run({"show_usage": False, "show_advisory": False})
+        hidden = summary_of(texts, self.out)
         for fragment in ("2 error(s)", "1 usage note(s)",
                          "1 advisory finding(s)"):
             self.assertIn(fragment, shown)
-            self.assertIn(fragment, self.out)
+            self.assertIn(fragment, hidden)
 
     def test_an_unrecognised_value_shows_rather_than_hides(self):
         """The direction, and it is the opposite of `autoupdate`'s.
@@ -887,17 +898,28 @@ class DisplaySettingsTests(unittest.TestCase):
         _bk, texts = self._run(bk=CleanBk({"show_usage": False,
                                            "show_advisory": False}))
         self.assertEqual(texts, [], "an automation list would abort on these")
+        # With nothing to sit beside it goes to the one channel left.
         self.assertIn("VALID", self.out)
         self.assertIn("hidden by your settings", self.out)
 
-    def test_the_summary_is_never_a_result_whatever_the_settings(self):
-        """A result is how Sigil is told the book has a problem. There is no
-        setting under which the summary should be one."""
+    def test_the_summary_rides_with_the_findings_when_there_are_any(self):
+        """Where a reader is actually looking.
+
+        Adding it beside real findings costs an automation list nothing: the
+        list was going to abort on those findings anyway. And the Plugin
+        Runner window, which is where a printed line goes, is not shown at all
+        for a run that succeeds — `<autostart>true</autostart>` sends Sigil
+        straight to the results.
+        """
         for prefs in ({}, {"show_summary": True}, {"show_usage": False},
                       {"show_advisory": False}):
             _bk, texts = self._run(dict(prefs))
-            self.assertFalse([t for t in texts if t.startswith("epubveri ")],
-                             "%r put the summary in the table" % (prefs,))
+            rows = [t for t in texts if t.startswith("epubveri ")]
+            self.assertEqual(len(rows), 1,
+                             "%r did not put the summary in the table"
+                             % (prefs,))
+            self.assertNotIn("epubveri ", self.out,
+                             "%r also printed it" % (prefs,))
 
 
 @unittest.skipIf(_binary() is None, "set EPUBVERI_BINARY")
@@ -917,8 +939,9 @@ class PluginVersionTests(unittest.TestCase):
         """epubveri's says which validator produced the findings; the
         plugin's says which code turned them into rows, and most of the
         defects found so far were on this side of that line."""
-        _code, _texts, summary = run_capturing(FakeBk())
-        self.assertIn("(plugin %s)" % plugin._plugin_version(), summary)
+        _code, texts, out = run_capturing(FakeBk())
+        self.assertIn("(plugin %s)" % plugin._plugin_version(),
+                      summary_of(texts, out))
 
     def test_an_unreadable_plugin_xml_gives_no_version_rather_than_a_wrong_one(self):
         """The line exists to be pasted into a bug report, so a guess is worse

@@ -50,20 +50,24 @@ Both from Doitsu, MobileRead 374939 #21.
   validation plugin, named in Sigil's own binary — "Validation Tool Reported
   No Problems Found", "Aborted due to Validation Errors", "Ignored Validation
   Errors". Zero results is the first, and **one result of any severity is the
-  second**, `info` included. So the summary row aborted every automation list
-  this plugin was in, on every book.
+  second**, `info` included. So an unconditional summary row aborted every
+  automation list this plugin was in, on every book.
 
-  It is printed instead, which is where the plugin's output window reads from.
-  DiapDealer had already said it in #26 and DNSB says it again in #29: the
-  errors are in the results box, so the summary belongs somewhere that is not
-  a finding.
+  **The condition that fixes that is narrower than "never a result", and the
+  narrower one is what ships.** If the book already has findings, the list was
+  going to abort on them anyway, so a summary row beside them changes nothing
+  for automation — and it is the one place a reader is actually looking. Only
+  the clean book has to stay silent, and it loses nothing: Sigil writes
+  "Validation Tool Reported No Problems Found" into an empty panel by itself.
+  With nothing to sit beside, the line is printed.
 
-  **Two earlier attempts at this were wrong for one shared reason, and it was
-  a fact nobody had checked.** Both kept the line as a row on a clean book, to
-  avoid an empty panel that would look like a plugin which had failed to run.
-  That panel is not empty — Sigil writes "Validation Tool Reported No Problems
-  Found" into it by itself. Everything built on that premise was answering a
-  problem Sigil had already solved.
+  **Three earlier shapes were wrong, each on a guess about Sigil's interface
+  that had not been checked.** That an empty results panel is silent — it is
+  not. And that the plugin's output window is somewhere a reader will look —
+  it is not shown at all for a run that succeeds, because
+  `<autostart>true</autostart>` sends Sigil straight to the results. Printing
+  is where the line goes when it has nowhere better, not a place to put
+  something a user needs.
 
 - **When the plugin cannot run, it now says why where the message survives.**
   Five paths report a problem and return non-zero — no binary, a failed
