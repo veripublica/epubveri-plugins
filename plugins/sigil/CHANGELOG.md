@@ -3,7 +3,7 @@
 This plugin is versioned independently of the calibre plugin and of epubveri
 itself. The version Sigil shows comes from `plugin.xml`.
 
-## [0.2.0] — unreleased
+## [0.2.0] — 2026-09-04
 
 Both from Doitsu, MobileRead 374939 #21.
 

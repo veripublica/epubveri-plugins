@@ -11,7 +11,7 @@ The editing is the editor's; the verdict is epubveri's.
 
 | plugin | for | status |
 |---|---|---|
-| [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | **released — [0.1.1](https://github.com/veripublica/epubveri-plugins/releases/tag/sigil-v0.1.1)** |
+| [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | **released — [0.2.0](https://github.com/veripublica/epubveri-plugins/releases/tag/sigil-v0.2.0)** |
 | [`plugins/calibre`](plugins/calibre) | [calibre](https://calibre-ebook.com/)'s Edit Book | **released — [0.1.0](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-v0.1.0)** |
 
 **Each plugin has its own README, its own changelog and its own version.**
