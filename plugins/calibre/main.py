@@ -407,6 +407,52 @@ class ResultsDialog(QDialog):
             editor.set_focus()
 
 
+
+def _package(container, destdir):
+    """Write `container` out as an `.epub`, without changing the book.
+
+    **The obvious call is the wrong one.** `EpubContainer.commit` calls
+    `update_modified_timestamp()` for an EPUB 3 book, so committing the
+    container the user is editing — even to a temporary path — rewrites its
+    `dcterms:modified`. Validating would edit the book. So the container is
+    cloned and the clone is committed; the timestamp moves on the copy.
+
+    `clone_container` links rather than copies, which is safe:
+    `get_file_path_for_processing` decouples a file from its links before
+    writing to a cloned container. And `clone_dir` says it plainly — "dest
+    must already exist" — so the directory is created here; without that the
+    first clone fails on META-INF.
+
+    epubveri takes a packaged file rather than a directory: a decided scope,
+    so every tool in this family hands the others the same unit.
+    """
+    from calibre.ebooks.oeb.polish.container import clone_container
+    clone_root = os.path.join(destdir, 'clone')
+    os.makedirs(clone_root)
+    clone = clone_container(container, clone_root)
+
+    # **Nothing may stamp a read-only packaging**, and cloning alone is not
+    # enough to stop it. `EpubContainer.commit` calls
+    # `update_modified_timestamp()`, which dirties the OPF, and a dirtied file
+    # is re-serialised on the way out rather than copied. calibre's serialiser
+    # is not byte-preserving: on one fixture it split
+    # `<dc:title>T</dc:title><dc:language>en</dc:language>` onto two lines and
+    # wrote `<dc:creator/>` for `<dc:creator></dc:creator>`, so the OPF gained
+    # a line and every finding below it was reported one line off — the same
+    # defect the Sigil plugin had, arriving by a different route.
+    #
+    # Neutralising it on this throwaway clone leaves the OPF undirtied, so it
+    # is copied verbatim. Measured: with this, every file in the produced
+    # `.epub` is byte-identical to the container's, and an edited file is too
+    # — `commit_editor_to_container` writes the editor's bytes straight to the
+    # container with no parse.
+    clone.update_modified_timestamp = lambda *a, **k: None
+
+    epub_path = os.path.join(destdir, 'current.epub')
+    clone.commit(epub_path)
+    return epub_path
+
+
 class EpubVeriTool(Tool):
     """One entry in the editor's Plugins menu and toolbar."""
 
@@ -425,25 +471,15 @@ class EpubVeriTool(Tool):
     def _write_book(self, destdir):
         """The book as the user currently has it, as a real `.epub` file.
 
-        Two steps, and neither is optional — see this module's docstring for
-        why. Unsaved edits live in the editors, so they are committed to the
-        container first; and the container is cloned before it is written out,
-        because committing the real one would rewrite `dcterms:modified` on an
-        EPUB 3 book. epubveri takes a packaged file rather than a directory:
-        a decided scope, so every tool in this family hands the others the
-        same unit.
+        Unsaved edits live in the open editors rather than in the container,
+        so they are committed first — calibre's own docstring for this method
+        says to call it before acting on a container, and `check_requested`
+        does. The packaging itself is `_package`, which takes a container and
+        no editor, so the part that must not touch the book can be tested
+        without a GUI.
         """
-        from calibre.ebooks.oeb.polish.container import clone_container
         self.boss.commit_all_editors_to_container()
-        # `clone_dir` says it plainly: "dest must already exist". It creates
-        # the subdirectories under it but not the directory itself, so
-        # without this the first clone fails on META-INF.
-        clone_root = os.path.join(destdir, 'clone')
-        os.makedirs(clone_root)
-        clone = clone_container(self.current_container, clone_root)
-        epub_path = os.path.join(destdir, 'current.epub')
-        clone.commit(epub_path)
-        return epub_path
+        return _package(self.current_container, destdir)
 
     def validate(self):
         if self.current_container is None:

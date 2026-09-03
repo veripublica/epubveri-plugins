@@ -46,6 +46,32 @@ not been driven by hand — no menu has been clicked — so this is not a releas
   `NotImplementedError`, and that method belongs to calibre's *other*
   customization mechanism — the single `site_customization` string — which
   this plugin does not use. Found by the owner on the first click.
+- **Nothing in the packaged book is re-serialised, and cloning alone did not
+  achieve that.** `EpubContainer.commit` calls `update_modified_timestamp()`,
+  which dirties the OPF, and a dirtied file is rewritten rather than copied.
+  calibre's serialiser is not byte-preserving: on the test fixture it split
+  `<dc:title>T</dc:title><dc:language>en</dc:language>` onto two lines and
+  wrote `<dc:creator/>` for `<dc:creator></dc:creator>`, so the OPF gained a
+  line and **every finding below it was reported one line off** — the Sigil
+  defect arriving by a different route. The clone's timestamp update is
+  neutralised, so the OPF stays undirtied and is copied verbatim. Every file
+  in the produced `.epub` is now byte-identical to the container's, edited
+  files included (`commit_editor_to_container` writes the editor's bytes with
+  no parse).
+  - **Found by the test suite, not by a person** — the first defect in this
+    repository that was. Two real books had missed it: an EPUB 2 one never
+    triggers the timestamp update at all, and an EPUB 3 one happened to
+    re-serialise to the same number of lines.
+- **A test suite of its own**, 13 tests, run inside calibre's interpreter with
+  `calibre-debug plugins/calibre/tests/test_plugin.py`. It uses the same book
+  fixture as the Sigil plugin's tests, so a disagreement between the two
+  plugins is about a plugin and never about the fixture. Both packaging tests
+  were checked by removing the fix and watching them fail.
+  - `unittest.main()` finds nothing under `calibre-debug`, which runs a script
+    in a fresh globals dict rather than as `sys.modules['__main__']`. It
+    reports "NO TESTS RAN" rather than failing, which is the kind of green
+    that means nothing, so the suite is built from the module's own namespace
+    and refuses to run if it collects none.
 - **A settings page** (*Preferences → Plugins → Customize*) with three
   checkboxes: automatic updates, show usage notes, show advisory findings.
   All three default to on, so out of the box calibre and Sigil report the same
