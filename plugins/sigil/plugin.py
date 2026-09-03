@@ -14,6 +14,7 @@
 # choice rather than an obligation.
 
 import os
+import re
 import sys
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -49,16 +50,37 @@ _SIGIL_TYPE = {
 # epubveri reports about the container rather than a file.
 _NO_FILE = " "
 
-# **Every finding is shown, and there are no settings.** Sigil offers a plugin
-# no configuration screen — Manage Plugins lists name, version, author, type,
-# engine and platforms and nothing else — so a preference here would be a
-# switch the user cannot reach.
+# **Everything is shown by default, and the switches are off-switches.**
 #
-# That constraint pushed the right way. On the command line `usage` findings
-# and `--advisory` are off by default, because a script diffing epubveri
-# against epubcheck has to see the same report from both. A results panel is
-# not a diff: it has a Type column and every line here says what it is, so the
-# reader gets everything, labelled, and judges for themselves.
+# On the command line `usage` findings and `--advisory` are off by default,
+# because a script diffing epubveri against epubcheck has to see the same
+# report from both. A results panel is not a diff: it has a Type column and
+# every line here says what it is, so the reader gets everything, labelled,
+# and judges for themselves. That is still the default and always will be.
+#
+# What changed (Doitsu, MobileRead 374939 #21, "You can keep them enabled by
+# default") is that a reader who does not want a category can now switch it
+# off. That is not the thing this file used to argue against. The objection
+# was to a switch a user must *find and turn on* before seeing what the
+# validator found — on Sigil that switch lives in a JSON file with no UI, so
+# hidden-by-default would mean hidden for almost everyone. An opt-out is the
+# opposite shape: someone who never opens the file sees exactly what they saw
+# before. And the people asking are the ones who open it — DNSB, #16: "For the
+# most part, I am in the edit json for settings."
+#
+# Two consequences are load-bearing and are enforced below rather than
+# promised here:
+#
+#   * **The filter is on the display, never on the run.** `-u --advisory` are
+#     passed on every invocation whatever the settings say, so the counts in
+#     the summary describe the book rather than the settings.
+#   * **A hidden category says that it is hidden.** Otherwise a panel with no
+#     usage notes cannot be told from a panel whose usage notes were filtered,
+#     and the reader has no way back to a setting they made months ago. This
+#     project has been bitten three times by a check that produced silence
+#     rather than a wrong answer; a settings-driven silence is the same shape.
+#     It is also the only place the switches can be discovered, Sigil having
+#     no settings screen at all.
 #
 # What does **not** change is the verdict. `ADV-*`/`NEXT-*` never move
 # VALID/NOT VALID — epubveri's standing guarantee, measured across 444 books —
@@ -101,6 +123,29 @@ def _label(finding):
 
 def _plugin_dir():
     return os.path.dirname(os.path.abspath(__file__))
+
+
+#: `plugin.xml` is the one place the plugin's version lives — Sigil reads it
+#: to fill Manage Plugins, and `build.py` reads it to name the archive. A
+#: second copy in this file would be a second thing to bump and a second thing
+#: to forget, so it is read at runtime instead.
+_VERSION_RE = re.compile(r"<version>([^<]+)</version>")
+
+
+def _plugin_version():
+    """The version from `plugin.xml`, or None.
+
+    None rather than a guess: the summary line exists to be pasted into a bug
+    report (Doitsu, MobileRead 374939 #21), and a wrong version there is worse
+    than an absent one.
+    """
+    try:
+        with open(os.path.join(_plugin_dir(), "plugin.xml"),
+                  encoding="utf-8") as handle:
+            found = _VERSION_RE.search(handle.read())
+    except Exception:                                  # noqa: BLE001
+        return None
+    return found.group(1).strip() if found else None
 
 
 def _binary_path():
@@ -167,6 +212,50 @@ _UPDATE_DEFAULT = True
 #: the network, which is recoverable, visible in the report after a month, and
 #: never worse than the user asked for.
 _ON_VALUES = frozenset(["yes", "true", "on", "1", "y"])
+
+
+#: The three display switches (Doitsu, MobileRead 374939 #21). Written into
+#: the file with their defaults on first run, for the same reason
+#: `autoupdate` is: the JSON is the only place they can be changed, so it has
+#: to be the place they can be found.
+_DISPLAY_KEYS = ("show_usage", "show_advisory", "show_summary")
+_DISPLAY_DEFAULT = True
+
+#: **The safe direction here is the opposite of `autoupdate`'s, and that is
+#: the whole reason this is a separate list.**
+#:
+#: There the unrecognised value had to mean *off*: the switch governs someone
+#: else's connection, so guessing "yes" from `hayır` or a typo does the thing
+#: they asked us not to do. Here the switch governs whether a finding is
+#: shown, and the harmful direction is hiding one — a reader who mistypes
+#: `flase` and is silently shown less than the validator found has no way to
+#: notice. So this lists what counts as **off**, and everything else shows.
+#:
+#: Both lists are therefore permissive towards the same thing: the state the
+#: user cannot be harmed by not having chosen.
+_OFF_VALUES = frozenset(["no", "false", "off", "0", "n"])
+
+
+def _display_prefs(bk, prefs):
+    """`{"usage": bool, "advisory": bool, "summary": bool}`."""
+    show = {}
+    missing = False
+    for key in _DISPLAY_KEYS:
+        value = prefs.get(key)
+        if value is None:
+            # First run: write the default so the file shows the choice exists.
+            prefs[key] = _DISPLAY_DEFAULT
+            missing = True
+            show[key] = _DISPLAY_DEFAULT
+        elif isinstance(value, bool):
+            show[key] = value
+        else:
+            # Hand-typed, so it will not always be a JSON boolean.
+            show[key] = str(value).strip().lower() not in _OFF_VALUES
+    if missing:
+        bk.savePrefs(prefs)
+    return dict(usage=show["show_usage"], advisory=show["show_advisory"],
+                summary=show["show_summary"])
 
 
 def _updates_allowed(bk, prefs):
@@ -438,10 +527,27 @@ def _char_offset(workdir, location, line, column):
     return offsets[line - 1] + max((column or 1) - 1, 0)
 
 
-def _report(bk, envelope, workdir):
-    """Put every finding into Sigil's validation panel."""
-    shown = 0
+def _report(bk, envelope, workdir, show):
+    """Put the findings into Sigil's validation panel.
+
+    Returns `{"shown": n, "usage": n, "advisory": n}` — the rows written, and
+    the rows withheld per category, because the summary has to say so.
+    """
+    counts = {"shown": 0, "usage": 0, "advisory": 0}
     for finding in sorted(envelope.findings, key=lambda f: f.sort_key):
+        # `ADV-*`/`NEXT-*` are emitted AT usage severity, so the advisory test
+        # has to come first or `show_usage: false` would silently take the
+        # advisories with it — two switches, one of them doing the other's
+        # job.
+        if finding.is_advisory:
+            if not show["advisory"]:
+                counts["advisory"] += 1
+                continue
+        elif finding.severity == "usage":
+            if not show["usage"]:
+                counts["usage"] += 1
+                continue
+
         text = "%s %s: %s" % (_label(finding), finding.code, finding.message)
         if finding.is_advisory:
             # Say plainly why this line is not in epubcheck's output.
@@ -463,8 +569,8 @@ def _report(bk, envelope, workdir):
         else:
             bk.add_extended_result(restype, _xml_attr(bookpath), line, offset,
                                    _xml_attr(text))
-        shown += 1
-    return shown
+        counts["shown"] += 1
+    return counts
 
 
 def run(bk):
@@ -483,11 +589,20 @@ def run(bk):
                       _xml_attr("epubveri: %s" % update_note))
         return -1
 
+    # Read after `_ensure_binary`, which writes to the same file: it is the
+    # one that creates it on a first run, and it saves `autoupdate` and the
+    # update bookkeeping through its own copy.
+    show = _display_prefs(bk, bk.getPrefs())
+
     tmpdir = tempfile.mkdtemp(prefix="epubveri-sigil-")
     try:
         epub_path, workdir = _build_epub(bk, tmpdir)
         try:
-            # `-u` and `--advisory` always; the panel shows everything.
+            # `-u` and `--advisory` on every run, whatever the display
+            # settings say. Filtering here instead of at the binary would make
+            # the summary's counts describe the settings rather than the book,
+            # and would put the switches on the epubveri side of a boundary
+            # this plugin does not own.
             envelope = runner.run_epubveri(binary, epub_path)
         except EnvelopeError as exc:
             bk.add_result("error", _NO_FILE, -1,
@@ -504,13 +619,22 @@ def run(bk):
                 % (envelope.error or "no reason given")))
             return -1
 
-        _report(bk, envelope, workdir)
+        counts = _report(bk, envelope, workdir, show)
         verdict = "VALID" if envelope.is_valid else "NOT VALID"
         # The verdict line quotes only errors and fatals, because that is what
         # decides it and what epubcheck would print. Usage notes and
         # advisories are in the panel above and count towards neither.
+        #
+        # Both versions are named. epubveri's says which validator produced
+        # the findings; the plugin's says which code turned them into these
+        # rows, and five of the defects found so far were on this side of that
+        # line rather than the other.
+        version = envelope.version
+        plugin_version = _plugin_version()
+        if plugin_version:
+            version += " (plugin %s)" % plugin_version
         summary = "epubveri %s — %s (%d error(s), %d warning(s))" % (
-            envelope.version, verdict,
+            version, verdict,
             envelope.count("error") + envelope.count("fatal"),
             envelope.count("warning"))
         advisory = sum(1 for f in envelope.findings if f.is_advisory)
@@ -518,18 +642,31 @@ def run(bk):
         # usage count already contains them; subtract or they are counted
         # twice.
         usage = envelope.count("usage") - advisory
-        extra = []
+        # What was found is stated whether or not it was displayed, and the
+        # two are kept apart. A category that was filtered says so: the reader
+        # gets the number, and the word "settings" is the only clue Sigil can
+        # give them that a switch exists.
+        listed, hidden = [], []
         if usage > 0:
-            extra.append("%d usage note(s)" % usage)
+            (listed if show["usage"] else hidden).append(
+                "%d usage note(s)" % usage)
         if advisory:
-            extra.append("%d advisory finding(s) epubcheck does not make"
-                         % advisory)
-        if extra:
+            (listed if show["advisory"] else hidden).append(
+                "%d advisory finding(s) epubcheck does not make" % advisory)
+        if listed:
             summary += "; also listed: %s — neither affects the verdict" \
-                       % ", ".join(extra)
+                       % ", ".join(listed)
+        if hidden:
+            summary += "; %s hidden by your settings" % ", ".join(hidden)
         if update_note:
             summary += " [%s]" % update_note
-        bk.add_result("info", _NO_FILE, -1, _xml_attr(summary))
+        # `show_summary: false` suppresses this line — unless it would leave
+        # the panel completely empty. Sigil starts this plugin on its own
+        # (`<autostart>true</autostart>`), so an empty panel is the same thing
+        # a plugin that failed to run produces, and "your book is clean" is
+        # the one message that would be lost by staying quiet.
+        if show["summary"] or counts["shown"] == 0:
+            bk.add_result("info", _NO_FILE, -1, _xml_attr(summary))
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
     return 0

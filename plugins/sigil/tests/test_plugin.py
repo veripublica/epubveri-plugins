@@ -649,11 +649,11 @@ class RunTests(unittest.TestCase):
         self.assertEqual(creators[0][0], "error")
 
     def test_every_finding_reaches_the_panel_and_is_labelled(self):
-        """No settings, so nothing is hidden — and nothing is ambiguous.
+        """Nothing is hidden by default — and nothing is ambiguous.
 
-        Sigil gives a plugin no configuration screen, so a preference would be
-        a switch the user cannot reach. Everything is shown instead, and every
-        line says what it is: an advisory is labelled ADVISORY and carries the
+        The switches added for MobileRead 374939 #21 are off-switches: a user
+        who never opens the JSON sees what this test sees. Every line says
+        what it is, and an advisory is labelled ADVISORY and carries the
         sentence that keeps it from reading as the two tools disagreeing.
         """
         bk = FakeBk()
@@ -730,3 +730,164 @@ class RunTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class CleanBk(FakeBk):
+    """The same book with its two errors repaired.
+
+    What is left is exactly one usage note and one advisory, so this is the
+    fixture that can make the results panel empty: hide both categories and
+    there is nothing to say. That is the only way to reach the branch where a
+    suppressed summary speaks anyway, and it is a real run rather than a
+    stubbed one.
+    """
+
+    def copy_book_contents_to(self, destdir):
+        files = dict(FILES)
+        files["OEBPS/content.opf"] = OPF.replace(
+            "<dc:creator></dc:creator>", "<dc:creator>A</dc:creator>")
+        files["OEBPS/Text/ch1.xhtml"] = CH1.replace(' fake="x"', "")
+        for name, text in files.items():
+            path = os.path.join(destdir, name.replace("/", os.sep))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(text)
+
+
+@unittest.skipIf(_binary() is None, "set EPUBVERI_BINARY")
+class DisplaySettingsTests(unittest.TestCase):
+    """The three off-switches from Doitsu, MobileRead 374939 #21.
+
+    Every one of these was checked by reverting the change and watching it
+    fail, which is the only thing that makes a green suite evidence.
+    """
+
+    def _run(self, prefs=None, bk=None):
+        bk = bk or FakeBk(prefs)
+        self.assertEqual(plugin.run(bk), 0)
+        return bk, [r[4] for r in bk.results]
+
+    def test_the_switches_are_written_into_the_file_on_first_run(self):
+        """The JSON is the only place they can be changed, so it has to be the
+        place they can be found. A key that were merely honoured would leave
+        someone reading the file with no sign the choice exists."""
+        bk, _ = self._run()
+        for key in ("show_usage", "show_advisory", "show_summary"):
+            self.assertIs(bk.prefs.get(key), True, bk.prefs)
+
+    def test_show_usage_false_hides_usage_and_leaves_advisories(self):
+        _bk, texts = self._run({"show_usage": False})
+        self.assertFalse([t for t in texts if t.startswith("USAGE ")], texts)
+        self.assertTrue([t for t in texts if t.startswith("ADVISORY ")], texts)
+        # And the errors, which no switch touches.
+        self.assertTrue([t for t in texts if t.startswith("ERROR ")], texts)
+
+    def test_show_advisory_false_hides_advisories_and_leaves_usage(self):
+        """The two switches must not do each other's job. `ADV-*` is emitted
+        AT usage severity, so a filter written on severity alone would take
+        the advisories out with `show_usage` and leave `show_advisory` with
+        nothing to do."""
+        _bk, texts = self._run({"show_advisory": False})
+        self.assertFalse([t for t in texts if t.startswith("ADVISORY ")], texts)
+        self.assertTrue([t for t in texts if t.startswith("USAGE ")], texts)
+
+    def test_a_hidden_category_says_so_and_keeps_its_count(self):
+        """The whole point. A panel with no usage notes must not read the same
+        as a panel whose usage notes were filtered — this project has three
+        defects on record whose only symptom was silence, and a settings-driven
+        silence is the same shape. It is also the only way a Sigil user can
+        discover that a switch exists at all."""
+        _bk, texts = self._run({"show_usage": False, "show_advisory": False})
+        summary = texts[-1]
+        self.assertIn("1 usage note(s)", summary)
+        self.assertIn("1 advisory finding(s) epubcheck does not make", summary)
+        self.assertIn("hidden by your settings", summary)
+        self.assertNotIn("also listed", summary)
+
+    def test_hiding_does_not_change_what_the_validator_was_asked(self):
+        """`-u --advisory` go on every run whatever the settings say, so the
+        numbers describe the book and not the preferences. Compare the two
+        summaries: the same counts, differently placed."""
+        _shown, shown_texts = self._run()
+        _hidden, hidden_texts = self._run({"show_usage": False,
+                                           "show_advisory": False})
+        for fragment in ("2 error(s)", "1 usage note(s)",
+                         "1 advisory finding(s)"):
+            self.assertIn(fragment, shown_texts[-1])
+            self.assertIn(fragment, hidden_texts[-1])
+
+    def test_an_unrecognised_value_shows_rather_than_hides(self):
+        """The direction, and it is the opposite of `autoupdate`'s.
+
+        There an unrecognised value must mean *off*, because the switch spends
+        someone's connection. Here the harmful direction is hiding a finding:
+        a reader who types `flase` and is silently shown less than the
+        validator found has no way to notice.
+        """
+        for typo in ("flase", "hayır", "", "maybe"):
+            _bk, texts = self._run({"show_usage": typo})
+            self.assertTrue([t for t in texts if t.startswith("USAGE ")],
+                            "%r hid a finding" % typo)
+
+    def test_the_off_spellings_a_hand_edited_file_will_contain(self):
+        """A JSON boolean is what the file is written with, but what comes
+        back is whatever was typed over it."""
+        for off in (False, "false", "False", "no", "off", "0", "N", " no "):
+            _bk, texts = self._run({"show_usage": off})
+            self.assertFalse([t for t in texts if t.startswith("USAGE ")],
+                             "%r did not hide" % (off,))
+
+    def test_show_summary_false_drops_the_line(self):
+        _bk, texts = self._run({"show_summary": False})
+        self.assertTrue(texts, "the findings went with the summary")
+        self.assertFalse([t for t in texts if t.startswith("epubveri ")], texts)
+
+    def test_show_summary_false_still_speaks_when_nothing_else_would(self):
+        """Sigil starts this plugin on its own, so an empty panel is exactly
+        what a plugin that failed to run produces. "Your book is clean" is the
+        one message that would be lost by staying quiet."""
+        bk, texts = self._run(bk=CleanBk({"show_summary": False,
+                                          "show_usage": False,
+                                          "show_advisory": False}))
+        self.assertEqual(len(texts), 1, texts)
+        self.assertTrue(texts[0].startswith("epubveri "), texts)
+        self.assertIn("VALID", texts[0])
+        self.assertIn("hidden by your settings", texts[0])
+
+
+@unittest.skipIf(_binary() is None, "set EPUBVERI_BINARY")
+class PluginVersionTests(unittest.TestCase):
+    """Doitsu, MobileRead 374939 #21: "add the plugin version number for
+    debugging purposes"."""
+
+    def test_the_version_is_read_from_plugin_xml_and_not_duplicated(self):
+        with open(os.path.join(plugin._plugin_dir(), "plugin.xml"),
+                  encoding="utf-8") as handle:
+            declared = handle.read()
+        version = plugin._plugin_version()
+        self.assertTrue(version, "no version found in plugin.xml")
+        self.assertIn("<version>%s</version>" % version, declared)
+
+    def test_the_summary_names_both_versions(self):
+        """epubveri's says which validator produced the findings; the
+        plugin's says which code turned them into rows, and most of the
+        defects found so far were on this side of that line."""
+        bk = FakeBk()
+        plugin.run(bk)
+        summary = bk.results[-1][4]
+        self.assertIn("(plugin %s)" % plugin._plugin_version(), summary)
+
+    def test_an_unreadable_plugin_xml_gives_no_version_rather_than_a_wrong_one(self):
+        """The line exists to be pasted into a bug report, so a guess is worse
+        than an absence."""
+        real = plugin._plugin_dir
+        plugin._plugin_dir = lambda: os.path.join(os.path.dirname(__file__),
+                                                  "no-such-dir")
+        try:
+            self.assertIsNone(plugin._plugin_version())
+        finally:
+            plugin._plugin_dir = real
+
+
+if __name__ == "__main__":
+    unittest.main()

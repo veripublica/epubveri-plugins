@@ -60,17 +60,19 @@ verdict, and — when there are any — how many usage notes and advisory findin
 are in the list above it, neither of which decides the verdict.
 
 ```
-epubveri 0.13.3 — NOT VALID (2 error(s), 0 warning(s));
+epubveri 0.13.3 (plugin 0.2.0) — NOT VALID (2 error(s), 0 warning(s));
 also listed: 1 usage note(s), 1 advisory finding(s) epubcheck does not make
              — neither affects the verdict
 ```
 
+Two versions, because two things can be wrong: epubveri's names the validator
+that produced the findings, the plugin's names the code that turned them into
+these rows. Quote the whole line when reporting anything.
+
 ## What is in the report, and what decides the verdict
 
-**Everything epubveri found is listed, and nothing is filtered.** Sigil gives a
-plugin no configuration screen, so a switch controlling what you see would have
-been one you could not reach. (There is one setting, for automatic updates, and
-it lives in a file — see below. It changes nothing about the report.)
+**Everything epubveri found is listed by default.** You can switch categories
+off (see *Settings* below), and nothing is switched off for you.
 
 Every line says what it is, and only two kinds decide the verdict:
 
@@ -91,6 +93,57 @@ everything and judge for yourself.
 
 **A book that passes epubcheck passes epubveri**, with or without any of this.
 
+## Settings
+
+Sigil gives a plugin no settings screen — Manage Plugins lists a plugin's name,
+version and platforms and nothing else — so these live in a file:
+
+```
+<Sigil preferences>/plugins_prefs/epubveri/epubveri.json
+```
+
+The plugin writes it on its first run, with every setting at its default, so
+the file shows you which choices exist:
+
+```json
+{
+  "autoupdate": true,
+  "show_usage": true,
+  "show_advisory": true,
+  "show_summary": true
+}
+```
+
+| setting | `false` means |
+|---|---|
+| `show_usage` | `USAGE` lines are not listed |
+| `show_advisory` | `ADVISORY` lines are not listed |
+| `show_summary` | the last line is not written |
+| `autoupdate` | nothing is ever requested over the network |
+
+Three things are worth knowing before you change any of them.
+
+**A category you hide is still counted.** The summary says
+`1 usage note(s) hidden by your settings` rather than saying nothing, so a
+panel with no usage notes never looks the same as a panel whose usage notes
+were filtered. It is also the only place these settings can be discovered, so
+switching them off does not hide the fact that they exist.
+
+**Hiding changes the report, never the run.** epubveri is asked for everything
+on every run, so the counts in the summary describe the book rather than your
+settings.
+
+**Anything that is not clearly a no is read as yes** — `false`, `no`, `off`,
+`0` all hide; a typo shows. That is deliberately the opposite of `autoupdate`,
+where anything unclear is read as *no*: there the switch spends your
+connection, so a misread must not use it; here the switch hides findings, so a
+misread must not hide them.
+
+`show_summary: false` has one exception: if there is nothing else in the panel,
+the summary is written anyway. Sigil runs this plugin on its own, and an empty
+panel is exactly what a plugin that failed to run produces — "your book is
+clean" is the one message worth not losing.
+
 ## If something goes wrong
 
 - **Working offline?** Once the binary is installed the plugin never needs the
@@ -100,23 +153,12 @@ everything and judge for yourself.
   cost is a connection that accepts and then goes nowhere (a captive portal, a
   firewall that drops rather than refuses), which spends five seconds once an
   hour before giving up.
-- **Do not want it touching the network at all?** Sigil gives a plugin no
-  settings screen, so this one lives in a file. Open
-
-  ```
-  <Sigil preferences>/plugins_prefs/epubveri/epubveri.json
-  ```
-
-  and change the line the plugin writes there on its first run:
-
-  ```json
-  "autoupdate": true      ->      "autoupdate": false
-  ```
-
-  Nothing is then requested, ever, and nothing is said about it. Anything that
-  is not clearly a yes — `false`, `no`, `off`, `0`, or a typo — is read as no,
-  because the one thing this switch must never do is use your connection when
-  you asked it not to. (The calibre plugin has a checkbox for the same setting.)
+- **Do not want it touching the network at all?** Set `"autoupdate": false`
+  in the settings file described above. Nothing is then requested, ever, and
+  nothing is said about it. Anything that is not clearly a yes — `false`,
+  `no`, `off`, `0`, or a typo — is read as no, because the one thing this
+  switch must never do is use your connection when you asked it not to. (The
+  calibre plugin has a checkbox for the same setting.)
 - **After a month offline** the summary adds one line: *"this epubveri is 45
   days old and could not be checked for updates"*. Not an error and not a
   warning — the validator works. It is there because a copy that old may

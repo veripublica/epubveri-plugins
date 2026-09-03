@@ -3,6 +3,54 @@
 This plugin is versioned independently of the calibre plugin and of epubveri
 itself. The version Sigil shows comes from `plugin.xml`.
 
+## [0.2.0] — unreleased
+
+Both from Doitsu, MobileRead 374939 #21.
+
+- **Three settings, and they are off-switches.** `show_usage`,
+  `show_advisory` and `show_summary` in
+  `plugins_prefs/epubveri/epubveri.json`, all defaulting to true and written
+  into the file on the first run so that the file shows which choices exist.
+  Someone who never opens it sees exactly what 0.1.1 showed.
+
+  This is not a reversal of 0.1.0's "no settings" position, which was about a
+  different shape: a switch you must *find and turn on* before seeing what the
+  validator found would be hidden from almost everyone, Sigil having no
+  settings screen. An opt-out costs nothing to the reader who never uses it.
+
+  Three properties are enforced by tests rather than promised here:
+
+  - **A hidden category still says so.** The summary reads `1 usage note(s)
+    hidden by your settings`, so a panel with no usage notes never looks the
+    same as a panel whose usage notes were filtered. This project has three
+    defects on record whose only symptom was silence rather than a wrong
+    answer, and a settings-driven silence is the same shape. It is also the
+    only place a Sigil user can find out that these settings exist.
+  - **The filter is on the display, never on the run.** `-u --advisory` are
+    passed on every invocation whatever the settings say, so the counts in the
+    summary describe the book rather than the preferences.
+  - **Anything not clearly a no is read as yes** — the opposite of
+    `autoupdate`, deliberately. There an unrecognised value must mean *off*,
+    because that switch spends your connection; here it must mean *show*,
+    because a reader who mistypes `flase` and is silently given less than the
+    validator found has no way to notice.
+
+  `show_summary: false` has one exception: the line is written anyway when
+  there would otherwise be nothing in the panel. Sigil starts this plugin on
+  its own, so an empty panel is indistinguishable from a plugin that failed to
+  run, and "your book is clean" is the one message worth not losing.
+
+- **The summary names the plugin's version as well as epubveri's** —
+  `epubveri 0.13.3 (plugin 0.2.0) — VALID …` — asked for so that a pasted line
+  identifies both halves. It is read from `plugin.xml` at runtime rather than
+  copied into the code, because a second copy is a second thing to forget; if
+  it cannot be read the line simply omits it, a wrong version in a bug report
+  being worse than an absent one.
+
+  Worth stating plainly: most of the defects found in this plugin so far were
+  in the plugin rather than in the validator, so the number that was missing
+  is the one that was usually at fault.
+
 ## [0.1.1] — 2026-09-03
 
 Both items reported the day 0.1.0 shipped, by DNSB on Windows
