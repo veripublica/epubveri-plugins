@@ -36,6 +36,7 @@ import tempfile
 import shutil
 from datetime import datetime, timedelta, timezone
 
+from calibre.constants import config_dir
 from calibre.gui2 import error_dialog
 from calibre.gui2.tweak_book.plugin import Tool
 from calibre.utils.config import JSONConfig
@@ -131,9 +132,9 @@ def _integrity_failure(path):
     if actual == stored:
         return None
     return ('the epubveri binary has changed since it was verified '
-            '(expected %s, found %s). It was not run. Delete it from the '
-            'plugin folder and validate again to reinstall a verified copy.'
-            % (stored[:16], actual[:16]))
+            '(expected %s, found %s). It was not run. Delete\n%s\nand '
+            'validate again to reinstall a verified copy.'
+            % (stored[:16], actual[:16], path))
 
 
 def _install_failure(exc):
@@ -159,12 +160,28 @@ def _update_note(before, after):
     return 'updated epubveri'
 
 
-def _plugin_dir():
-    return os.path.dirname(os.path.abspath(__file__))
+def _data_dir():
+    """Where the epubveri binary lives. **Not the plugin's own folder.**
+
+    calibre never unpacks a plugin: it imports straight out of the zip, so
+    `os.path.dirname(__file__)` is `.../plugins/epubveri.zip` — a file. The
+    first run failed on exactly that, `[Errno 17] File exists`, because the
+    installer tried to create a directory over the archive it was running
+    from. The Sigil plugin can keep the binary beside itself precisely
+    because Sigil does unpack; this is the difference, not an oversight.
+
+    So the binary goes in a directory of our own next to the archive.
+    `initialize_plugins` reads calibre's `plugins` config dict rather than
+    listing that folder, so a subdirectory there disturbs nothing.
+    """
+    path = os.path.join(config_dir, 'plugins', 'epubveri')
+    if not os.path.isdir(path):
+        os.makedirs(path)
+    return path
 
 
 def _binary_path():
-    return os.path.join(_plugin_dir(), bin_mod.binary_filename())
+    return os.path.join(_data_dir(), bin_mod.binary_filename())
 
 
 def _ensure_binary():
@@ -187,7 +204,7 @@ def _ensure_binary():
 
     if not os.path.isfile(path):
         installed, archive_sha, binary_sha = bin_mod.download_binary(
-            _plugin_dir())
+            _data_dir())
         remember(archive_sha, binary_sha)
         return installed, 'installed epubveri'
 
@@ -212,7 +229,7 @@ def _ensure_binary():
         if wanted and wanted != prefs.get('installed_sha256'):
             before = runner.binary_version(path) or ''
             _p, archive_sha, binary_sha = bin_mod.download_binary(
-                _plugin_dir(), expected=wanted)
+                _data_dir(), expected=wanted)
             remember(archive_sha, binary_sha)
             after = runner.binary_version(path) or ''
             return path, _update_note(before, after)
