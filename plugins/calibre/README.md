@@ -5,7 +5,12 @@ specification with [epubveri](https://github.com/veripublica/epubveri) — no
 Java, sub-second, and reporting epubcheck's own message IDs so the output is
 recognisable. **It reads your book and reports; it changes nothing.**
 
-> **Status: written, partly exercised, not released.** The whole plugin is now
+> **Tested on calibre 9.14 on macOS, and nowhere else.** The declared
+> `minimum_calibre_version` is 6.0 because that is when `qt.core` — which this
+> plugin imports — replaced `PyQt5.Qt`. It is the oldest release the plugin
+> can load on, not the oldest it has been run on.
+>
+> **Status: written, exercised, not yet released.** The whole plugin is now
 > written — the tool, the results view with navigation, the settings page and
 > the update check — and it has been installed into calibre, where it
 > registers and imports. The container path is measured against real books

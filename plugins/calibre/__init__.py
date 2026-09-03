@@ -34,6 +34,11 @@ class EpubVeriPlugin(EditBookToolPlugin):
         'EPUB validator. Downloads and verifies the epubveri binary on first '
         'use; nothing else is installed.'
     )
+    #: Set by what the code imports, not by what has been tried: `qt.core`
+    #: arrived with calibre 6 (before that it was `PyQt5.Qt`), so 6.0 is the
+    #: oldest release this can load on at all. **It has only ever been run on
+    #: 9.14**, which the README says plainly rather than letting the number
+    #: here imply a range of tested versions.
     minimum_calibre_version = (6, 0, 0)
 
     #: calibre offers what Sigil does not: a settings page, reached from

@@ -72,6 +72,14 @@ not been driven by hand — no menu has been clicked — so this is not a releas
     reports "NO TESTS RAN" rather than failing, which is the kind of green
     that means nothing, so the suite is built from the module's own namespace
     and refuses to run if it collects none.
+- **A second validation replaces the first window** instead of opening another
+  beside it. The dialog is non-modal on purpose — activating a row moves the
+  editor behind it — so nothing otherwise stopped them accumulating, each older
+  one reporting a book that has since been edited.
+- `minimum_calibre_version` is 6.0 because that is when `qt.core` replaced
+  `PyQt5.Qt`; it is the oldest release the plugin can load on, not the oldest
+  it has been run on. **It has only ever run on 9.14, on macOS**, and the
+  README says so.
 - **A settings page** (*Preferences → Plugins → Customize*) with three
   checkboxes: automatic updates, show usage notes, show advisory findings.
   All three default to on, so out of the box calibre and Sigil report the same
@@ -90,5 +98,6 @@ not been driven by hand — no menu has been clicked — so this is not a releas
   name is one any other plugin might also use, and the first one imported
   would have won for both.
 
-**Still to do before this is released:** drive it by hand in calibre's editor,
-on all three platforms, and a test suite of its own.
+**Still open:** no platform but macOS has run it, and no calibre but 9.14.
+That is what a first release is for — Sigil's Windows and Linux reports both
+arrived the day after its own.

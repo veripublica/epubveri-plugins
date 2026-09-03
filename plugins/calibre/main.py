@@ -554,7 +554,14 @@ class EpubVeriTool(Tool):
         if update_note:
             summary += '\n[%s]' % update_note
 
-        dialog = ResultsDialog(self, shown, summary)
+        # A second validation replaces the first window rather than opening
+        # another beside it. The dialog is non-modal on purpose — activating a
+        # row moves the editor behind it — and without this, validating three
+        # times leaves three windows, two of them reporting a book that has
+        # since been edited.
+        previous = getattr(self, '_results', None)
+        if previous is not None:
+            previous.close()
         # Kept on the tool so Python does not collect a non-modal dialog.
-        self._results = dialog
-        dialog.show()
+        self._results = ResultsDialog(self, shown, summary)
+        self._results.show()

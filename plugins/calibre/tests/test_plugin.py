@@ -116,11 +116,62 @@ def binary():
 
 
 class Finding(object):
-    """Just enough of an envelope finding for the display filter."""
+    """Just enough of an envelope finding for the display and result layers."""
 
-    def __init__(self, severity, advisory=False):
+    def __init__(self, severity, advisory=False, location='OEBPS/x.xhtml',
+                 line=3, column=5, code='RSC-005', message='something'):
         self.severity = severity
         self.is_advisory = advisory
+        self.location = location
+        self.line = line
+        self.column = column
+        self.code = code
+        self.message = message
+
+
+_app = None
+
+
+def qt_app():
+    """One QApplication for the whole run; Qt allows no more."""
+    global _app
+    if _app is None:
+        from calibre.gui2 import Application
+        _app = Application([])
+    return _app
+
+
+class StubKeyboard(object):
+    def __init__(self):
+        self.registered = []
+
+    def register_shortcut(self, unique_name, short_text, **kwargs):
+        self.registered.append(unique_name)
+
+
+def stub_tool():
+    """An `EpubVeriTool` with a window and a keyboard but no editor.
+
+    `Tool.gui` and `Tool.boss` are properties that reach for a live editor, so
+    they are overridden rather than stubbed by assignment.
+    """
+    from qt.core import QWidget
+    qt_app()
+    window = QWidget()
+    window.keyboard = StubKeyboard()
+
+    class Stubbed(plugin.EpubVeriTool):
+        @property
+        def gui(self):
+            return window
+
+        @property
+        def boss(self):
+            return None
+
+    tool = Stubbed()
+    tool.window = window
+    return tool
 
 
 class DataDirTests(unittest.TestCase):
@@ -362,6 +413,184 @@ class PackageTests(unittest.TestCase):
             self.assertFalse([n for n in names if n.startswith('tests/')])
         finally:
             shutil.rmtree(os.path.dirname(path), ignore_errors=True)
+
+
+class ActionTests(unittest.TestCase):
+    """`create_action` is called TWICE — once for the toolbar and once for the
+    menu — and calibre swallows an exception from it, printing a traceback to
+    stderr and carrying on (`create_plugin_action`). A plugin that throws here
+    is simply absent from the menu, with nothing on screen to say so."""
+
+    def test_it_is_built_for_both_the_toolbar_and_the_menu(self):
+        tool = stub_tool()
+        for for_toolbar in (True, False):
+            action = tool.create_action(for_toolbar=for_toolbar)
+            self.assertIsNotNone(
+                action, 'calibre treats None as a failure and drops the tool')
+            self.assertTrue(str(action.text()))
+
+    def test_the_shortcut_is_registered_once_and_not_twice(self):
+        """calibre's own docstring: register for only one of the toolbar
+        action or the menu action, not both."""
+        tool = stub_tool()
+        tool.create_action(for_toolbar=True)
+        tool.create_action(for_toolbar=False)
+        self.assertEqual(len(tool.window.keyboard.registered), 1,
+                         tool.window.keyboard.registered)
+        self.assertTrue(tool.window.keyboard.registered[0].startswith(
+            plugin.EpubVeriTool.name + '_'))
+
+
+class ResultsDialogTests(unittest.TestCase):
+    """The view has never been built by anything but a person clicking."""
+
+    def test_every_finding_becomes_a_row_that_says_what_it_is(self):
+        tool = stub_tool()
+        findings = [Finding('error'),
+                    Finding('usage', code='OPF-097'),
+                    Finding('usage', advisory=True, code='ADV-010',
+                            location='OEBPS/content.opf', line=91, column=5)]
+        dialog = plugin.ResultsDialog(tool, findings, 'summary')
+        self.assertEqual(dialog.items.topLevelItemCount(), 3)
+        labels = [dialog.items.topLevelItem(i).text(0) for i in range(3)]
+        self.assertEqual(labels, ['ERROR', 'USAGE', 'ADVISORY'])
+        last = dialog.items.topLevelItem(2)
+        self.assertEqual(last.text(1), 'OEBPS/content.opf')
+        self.assertEqual(last.text(2), '91')
+        self.assertIn('ADV-010', last.text(3))
+        self.assertIn('epubcheck does not report this', last.text(3))
+        # The row carries the position the editor will be sent to.
+        from qt.core import Qt
+        self.assertEqual(last.data(0, Qt.ItemDataRole.UserRole),
+                         ('OEBPS/content.opf', 91, 5))
+
+    def test_a_clean_book_still_opens_a_window(self):
+        """Zero findings is the commonest happy case and the easiest one to
+        build a view that crashes on."""
+        tool = stub_tool()
+        dialog = plugin.ResultsDialog(tool, [], 'epubveri — VALID')
+        self.assertEqual(dialog.items.topLevelItemCount(), 0)
+        self.assertIn('VALID', dialog.summary.text())
+
+    def test_a_finding_with_no_file_neither_crashes_nor_navigates(self):
+        """Container-level findings carry no location. Activating one must do
+        nothing rather than raise inside Qt's event handler."""
+        tool = stub_tool()
+        dialog = plugin.ResultsDialog(
+            tool, [Finding('error', location=None, line=None, column=None)],
+            'summary')
+        item = dialog.items.topLevelItem(0)
+        self.assertEqual(item.text(1), '')
+        self.assertEqual(item.text(2), '')
+        self.assertIsNone(dialog.go_to(item))
+
+
+class Envelope(object):
+    """Enough of an envelope for the summary line."""
+
+    def __init__(self, findings, version='0.13.3'):
+        self.findings = findings
+        self.version = version
+        self.could_not_read = False
+        self.error = None
+
+    @property
+    def is_valid(self):
+        return not [f for f in self.findings
+                    if f.severity in ('error', 'fatal')]
+
+    def count(self, severity):
+        return len([f for f in self.findings if f.severity == severity])
+
+
+class SummaryTests(unittest.TestCase):
+    """The arithmetic, which is the easy thing to get quietly wrong: an
+    advisory is emitted AT usage severity, so a naive count reports it twice.
+    """
+
+    def _summary(self, findings):
+        tool = stub_tool()
+        tool._show(Envelope(findings), None)
+        return tool._results.summary.text()
+
+    def test_advisories_are_not_counted_as_usage_notes_as_well(self):
+        findings = [Finding('usage'), Finding('usage'),
+                    Finding('usage', advisory=True)]
+        text = self._summary(findings)
+        self.assertIn('2 usage note(s)', text)
+        self.assertIn('1 advisory finding(s)', text)
+        self.assertNotIn('3 usage note(s)', text)
+
+    def test_only_errors_and_warnings_decide_the_verdict(self):
+        text = self._summary([Finding('usage'), Finding('usage', advisory=True)])
+        self.assertIn('VALID', text)
+        self.assertNotIn('NOT VALID', text)
+        self.assertIn('0 error(s)', text)
+        self.assertIn('neither affects the verdict', text)
+
+        text = self._summary([Finding('fatal'), Finding('error'),
+                              Finding('warning')])
+        self.assertIn('NOT VALID', text)
+        self.assertIn('2 error(s)', text)      # a fatal counts as an error
+        self.assertIn('1 warning(s)', text)
+
+    def test_a_hidden_finding_is_declared_never_silently_dropped(self):
+        """A shorter report with no explanation is the one thing a display
+        switch must not produce."""
+        saved = plugin.prefs['show_advisory']
+        try:
+            plugin.prefs['show_advisory'] = False
+            text = self._summary([Finding('error'),
+                                  Finding('usage', advisory=True)])
+            self.assertIn('1 finding(s) are not listed', text)
+            self.assertIn('Customize', text)
+        finally:
+            plugin.prefs['show_advisory'] = saved
+
+    def test_validating_twice_replaces_the_window_rather_than_stacking(self):
+        """The dialog is non-modal, so nothing stops them accumulating — and
+        an old one reports a book that has since been edited."""
+        tool = stub_tool()
+        tool._show(Envelope([Finding('error')]), None)
+        first = tool._results
+        tool._show(Envelope([Finding('usage')]), None)
+        self.assertIsNot(tool._results, first)
+        self.assertFalse(first.isVisible())
+        self.assertIn('1 usage note(s)', tool._results.summary.text())
+
+    def test_nothing_is_said_about_settings_when_nothing_is_hidden(self):
+        text = self._summary([Finding('error')])
+        self.assertNotIn('not listed', text)
+
+
+class ConfigWidgetTests(unittest.TestCase):
+    def test_the_three_switches_show_and_save(self):
+        qt_app()
+        saved = {k: plugin.prefs[k]
+                 for k in ('autoupdate', 'show_usage', 'show_advisory')}
+        try:
+            for key in saved:
+                plugin.prefs[key] = True
+            widget = plugin.ConfigWidget()
+            from qt.core import QCheckBox
+            boxes = widget.findChildren(QCheckBox)
+            self.assertEqual(len(boxes), 3)
+            self.assertTrue(all(b.isChecked() for b in boxes),
+                            'the defaults must match the Sigil plugin')
+
+            widget.show_usage.setChecked(False)
+            widget.save_settings()
+            self.assertFalse(plugin.prefs['show_usage'])
+            self.assertTrue(plugin.prefs['autoupdate'])
+            # and a freshly built page shows what was saved. The widget has
+            # to be held: unreferenced, Qt deletes it and reading a child
+            # raises "wrapped C/C++ object has been deleted".
+            reopened = plugin.ConfigWidget()
+            self.assertFalse(reopened.show_usage.isChecked())
+            self.assertTrue(reopened.check_updates.isChecked())
+        finally:
+            for key, value in saved.items():
+                plugin.prefs[key] = value
 
 
 def run():
