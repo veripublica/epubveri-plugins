@@ -889,5 +889,66 @@ class PluginVersionTests(unittest.TestCase):
             plugin._plugin_dir = real
 
 
+class IconTests(unittest.TestCase):
+    """Sigil looks for `plugin.svg` and falls back to `plugin.png`, so the two
+    have to agree — and nothing but this notices when they stop. A mark edited
+    in one and not the other is a difference only somebody running the other
+    platform would ever see.
+
+    Needs no epubveri binary: it is about the shipped files, not a validation.
+    """
+
+    def _icon(self):
+        import importlib.util
+        path = os.path.join(plugin._plugin_dir(), "icon.py")
+        # By path, and under a name of its own: `import icon` inside Sigil or
+        # calibre finds whatever else is called that.
+        spec = importlib.util.spec_from_file_location("epubveri_sigil_icon",
+                                                      path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_the_shipped_svg_is_the_one_icon_py_writes(self):
+        icon = self._icon()
+        with open(os.path.join(plugin._plugin_dir(), "plugin.svg"),
+                  encoding="utf-8") as handle:
+            self.assertEqual(handle.read(), icon.SVG,
+                             "plugin.svg was hand-edited; run icon.py")
+
+    def test_the_shipped_png_is_the_one_icon_py_draws(self):
+        import tempfile
+        icon = self._icon()
+        with open(os.path.join(plugin._plugin_dir(), "plugin.png"), "rb") as h:
+            shipped = h.read()
+        fd, path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        try:
+            icon.write_png(path, 128)
+            with open(path, "rb") as handle:
+                self.assertEqual(handle.read(), shipped,
+                                 "plugin.png does not match the geometry; "
+                                 "run icon.py")
+        finally:
+            os.unlink(path)
+
+    def test_the_mark_fills_the_grid_it_shares_with_its_alternatives(self):
+        """The first draft of this mark stood 35x52 against a 60x60 tile and
+        read small for a real reason rather than an optical one. Height is the
+        dimension that has to match; a page is narrower than a tile by
+        definition."""
+        icon = self._icon()
+        x0, y0, x1, y1 = icon.RECT
+        self.assertEqual((x1 - x0, y1 - y0), (44.0, 60.0))
+        self.assertEqual(y1 - y0, icon.GRID - 2 * y0)
+
+    def test_nothing_in_the_mark_vanishes_at_16px(self):
+        """The thinnest thing on screen is the tick. At 16 px one grid unit is
+        a quarter of a pixel, so a stroke under about 4 units is a mark you
+        cannot see on the platform this was raised about."""
+        icon = self._icon()
+        self.assertGreaterEqual(icon.TICK_WIDTH * 16 / icon.GRID, 1.5)
+
+
 if __name__ == "__main__":
     unittest.main()

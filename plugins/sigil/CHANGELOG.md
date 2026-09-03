@@ -40,6 +40,38 @@ Both from Doitsu, MobileRead 374939 #21.
   its own, so an empty panel is indistinguishable from a plugin that failed to
   run, and "your book is clean" is the one message worth not losing.
 
+- **A new icon: a document with a tick knocked out of it, and no tile.**
+  DiapDealer, who maintains Sigil, pointed out that Linux Sigil takes any
+  theme colour imaginable and that simpler is best across three platforms
+  (MobileRead 374939 #22).
+
+  The tile it replaces was legible everywhere — it carried its own ground, so
+  no theme showed through it — but that was only half the question. A filled
+  tile sits in a toolbar of glyphs that are strokes on nothing and reads as a
+  badge dropped into the row; and inside it the page was about 7 px wide at
+  16 px with the tick at roughly 1.7 px inside that, which is the detail
+  "simpler is best" is aimed at. A single-colour glyph fixes the row and
+  fails the other way: it has no contrast of its own and disappears on a
+  ground near its own colour.
+
+  A filled silhouette is the third answer. It still carries its own contrast,
+  so no theme shows through, but its outline is the mark rather than a
+  rectangle drawn around one. Nothing in it is under 5 grid units, so the
+  thinnest thing on screen at 16 px is about 1.75 px.
+
+  It fills 44x60 of the 64 grid — as tall as a full-bleed tile, after a first
+  draft that stood 35x52 and read small beside one for a real reason rather
+  than an optical one.
+
+- **`icon.py` is now the only place the icon's geometry lives**, and writes
+  both `plugin.svg` and `plugin.png`. Sigil looks for the SVG and falls back
+  to the PNG, so the two have to agree and nothing noticed when they did not:
+  a mark edited in one and not the other is a difference only somebody on the
+  other platform would ever see. Two tests compare the shipped files against
+  what the geometry produces. It rasterises the PNG itself rather than
+  needing rsvg-convert, Inkscape, cairosvg or Pillow — three shapes, 36
+  coverage samples a pixel, `zlib` and `struct` from the standard library.
+
 - **The summary names the plugin's version as well as epubveri's** —
   `epubveri 0.13.3 (plugin 0.2.0) — VALID …` — asked for so that a pasted line
   identifies both halves. It is read from `plugin.xml` at runtime rather than

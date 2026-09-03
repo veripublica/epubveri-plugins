@@ -59,7 +59,8 @@ VERSION_RE = re.compile(r"<version>([^<]+)</version>")
 
 #: What never goes to a user.
 EXCLUDE = shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "build.py",
-                                 "epubveri", "epubveri.exe", ".DS_Store")
+                                 "icon.py", "epubveri", "epubveri.exe",
+                                 ".DS_Store")
 
 
 def version():
