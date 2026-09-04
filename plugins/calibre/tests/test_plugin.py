@@ -898,6 +898,135 @@ class ResultsPanelTests(PinnedPrefs, unittest.TestCase):
         self.assertIsNone(panel.go_to(item))
 
 
+class CleanBookTests(PinnedPrefs, unittest.TestCase):
+    """Doitsu, MobileRead 374940 #21: "if no problems were found, simply
+    display a message box instead of an empty widget." A panel that opens to
+    say nothing takes screen space at the moment the user is done with it."""
+
+    def setUp(self):
+        PinnedPrefs.setUp(self)
+        self.shown = []
+        self._info = plugin.info_dialog
+        plugin.info_dialog = lambda parent, title, msg, **kw: (
+            self.shown.append(msg) or None)
+
+    def tearDown(self):
+        plugin.info_dialog = self._info
+        PinnedPrefs.tearDown(self)
+
+    def test_a_clean_book_gets_a_box_and_leaves_the_panel_shut(self):
+        tool = stub_tool()
+        tool.create_action()
+        tool._show(Envelope([]), None)
+        self.assertEqual(len(self.shown), 1, self.shown)
+        self.assertIn('VALID', self.shown[0])
+        self.assertFalse(tool._dock.isVisibleTo(tool.window),
+                         'the panel opened to say nothing')
+
+    def test_a_panel_already_open_is_refilled_rather_than_left_stale(self):
+        """The one thing worse than an empty panel: the previous book's
+        findings sitting under a clean verdict."""
+        tool = stub_tool()
+        tool._show(Envelope([Finding('error')]), None)
+        self.assertTrue(tool._dock.isVisibleTo(tool.window))
+        self.assertEqual(tool._panel.items.topLevelItemCount(), 1)
+
+        tool._show(Envelope([]), None)
+        self.assertEqual(tool._panel.items.topLevelItemCount(), 0)
+        self.assertTrue(tool._dock.isVisibleTo(tool.window),
+                        'a panel the user had open was closed under them')
+        self.assertEqual(len(self.shown), 1)
+
+    def test_findings_still_open_the_panel_and_show_no_box(self):
+        tool = stub_tool()
+        tool._show(Envelope([Finding('usage')]), None)
+        self.assertTrue(tool._dock.isVisibleTo(tool.window))
+        self.assertEqual(self.shown, [])
+
+    def test_everything_hidden_by_a_setting_counts_as_nothing_to_list(self):
+        """The box then carries the line saying how many were hidden and
+        where the switch is, which is the only way that is discoverable."""
+        plugin.prefs['show_usage'] = False
+        tool = stub_tool()
+        tool._show(Envelope([Finding('usage')]), None)
+        self.assertEqual(len(self.shown), 1, self.shown)
+        self.assertIn('not listed because of the display settings',
+                      self.shown[0])
+
+
+class StatusBarTests(PinnedPrefs, unittest.TestCase):
+    """Doitsu asked for a word in the status bar while epubveri is checking
+    the book or looking for an update (374940 #21)."""
+
+    def test_it_uses_calibres_own_method_when_there_is_one(self):
+        tool = stub_tool()
+        said = []
+        tool.window.show_status_message = lambda msg, timeout=5: said.append(
+            (msg, timeout))
+        tool.status('checking the book')
+        self.assertEqual(said, [('epubveri: checking the book', 5)])
+
+    def test_it_falls_back_to_the_bar_on_a_calibre_without_it(self):
+        """`minimum_calibre_version` claims releases this was not checked in,
+        and a missing attribute would raise inside the validation."""
+        tool = stub_tool()
+        self.assertFalse(hasattr(tool.window, 'show_status_message'))
+        tool.status('checking the book', timeout=2)
+        self.assertEqual(tool.window.statusBar().currentMessage(),
+                         'epubveri: checking the book')
+
+    def test_the_verdict_reaches_the_bar_when_results_are_shown(self):
+        tool = stub_tool()
+        said = []
+        tool.window.show_status_message = lambda msg, timeout=5: said.append(
+            msg)
+        tool._show(Envelope([Finding('error')]), None)
+        self.assertIn('epubveri: NOT VALID', said)
+
+    def test_an_update_check_says_so_and_says_how_it_turned_out(self):
+        """The three moments he named: checking, downloading, and whether
+        anything was found."""
+        said = []
+        saved = {k: plugin.prefs[k] for k in ('autoupdate', 'last_update_check',
+                                              'installed_sha256',
+                                              'binary_sha256')}
+        real = (bin_mod_latest(), plugin.bin_mod.asset_name)
+        try:
+            plugin.prefs['autoupdate'] = True
+            plugin.prefs['last_update_check'] = 0
+            plugin.prefs['installed_sha256'] = 'whatever-is-installed'
+            # Cleared, or the integrity check refuses to run the stand-in
+            # file and returns before any of this. It is written back by the
+            # check itself, which is why it is saved and restored above.
+            plugin.prefs['binary_sha256'] = ''
+            plugin.bin_mod.latest_checksums = lambda timeout=5: {
+                'asset.zip': 'whatever-is-installed'}
+            plugin.bin_mod.asset_name = lambda: 'asset.zip'
+            binary = binary_path_that_exists()
+            plugin._binary_path = lambda: binary
+            plugin._ensure_binary(said.append)
+        finally:
+            plugin.bin_mod.latest_checksums, plugin.bin_mod.asset_name = real
+            plugin._binary_path = _real_binary_path
+            for key, value in saved.items():
+                plugin.prefs[key] = value
+        self.assertIn('checking for a newer epubveri', said)
+        self.assertIn('epubveri is up to date', said)
+
+
+_real_binary_path = plugin._binary_path
+
+
+def bin_mod_latest():
+    return plugin.bin_mod.latest_checksums
+
+
+def binary_path_that_exists():
+    """Any real file: `_ensure_binary` only asks whether the binary is
+    there before deciding an update check is even possible."""
+    return os.path.abspath(__file__)
+
+
 class SettingsDoorTests(PinnedPrefs, unittest.TestCase):
     """thiago.eec asked for the settings to be reachable inside the editor
     rather than only behind calibre's Preferences (MobileRead 374940 #20);

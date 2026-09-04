@@ -3,6 +3,33 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
+## [0.4.0] — unreleased
+
+The last two things Doitsu asked for in thread 374940, post 21.
+
+- **A clean book no longer opens the panel.** His words: "if no problems were
+  found, simply display a message box instead of an empty widget." A panel
+  that opens to say nothing takes screen space at the moment you are finished
+  with it, so the verdict goes in a box and the dock stays shut.
+
+  Minor rather than patch because of that: it is a change in what the plugin
+  does, not a fix. **A panel that was already open is still refilled** — the
+  previous book's findings sitting under a clean verdict would be worse than
+  either — but it is neither opened nor raised. A book whose every finding is
+  hidden by your display settings counts as nothing to list, and the box then
+  carries the line saying how many were hidden and where the switch is.
+
+- **The status bar says what is happening.** He asked for a word while the
+  book is being checked, while an update is being looked for or fetched, and
+  how that turned out — so there are messages for all four, plus the verdict
+  when the run ends. calibre's own `show_status_message` is used where it
+  exists and the bar directly where it does not, since
+  `minimum_calibre_version` claims releases this was not checked in.
+
+  The messages are painted with `processEvents`, which is not decoration: a
+  validation runs on the UI thread, so a line set before the work would
+  otherwise appear only once the thing it describes had finished.
+
 ## [0.3.0] — 2026-09-04
 
 Minor rather than patch: two of these change what the panel does, not only

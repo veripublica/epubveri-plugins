@@ -58,6 +58,12 @@ right-click menu has them too. It is the same page as *Preferences → Plugins �
 epubveri → Customize*, and changing anything there re-lists the run you
 already have rather than making you validate again.
 
+**A clean book does not open the panel** — it says so in a message box, and
+the dock stays where it was. A panel you already had open is refilled either
+way, so it never shows the previous book's findings. While a validation runs,
+the status bar says what is happening: checking the book, looking for a newer
+epubveri, fetching one, and the verdict at the end.
+
 Each row gives the severity, the file, the line and the message. There is no
 column for the position *within* the line: the plugin knows it and uses it —
 double-clicking a row puts the cursor on that character rather than at the

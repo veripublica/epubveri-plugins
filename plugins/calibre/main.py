@@ -40,7 +40,7 @@ import shutil
 from datetime import datetime, timedelta, timezone
 
 from calibre.constants import config_dir
-from calibre.gui2 import error_dialog
+from calibre.gui2 import error_dialog, info_dialog
 from calibre.gui2.tweak_book.plugin import Tool
 from calibre.utils.config import JSONConfig
 from qt.core import (QAbstractItemView, QAction, QApplication, QBrush,
@@ -297,7 +297,7 @@ def _binary_path():
     return os.path.join(_data_dir(), bin_mod.binary_filename())
 
 
-def _ensure_binary():
+def _ensure_binary(status=None):
     """The epubveri binary to use, installing or updating it as needed.
 
     Returns `(path, note)`. `path` is None only when the binary on disk failed
@@ -315,7 +315,12 @@ def _ensure_binary():
         prefs['last_update_check'] = _stamp()
         prefs['last_update_success'] = prefs['last_update_check']
 
+    def say(message):
+        if status is not None:
+            status(message)
+
     if not os.path.isfile(path):
+        say('downloading epubveri (first run)')
         installed, archive_sha, binary_sha = bin_mod.download_binary(
             _data_dir())
         remember(archive_sha, binary_sha)
@@ -336,16 +341,21 @@ def _ensure_binary():
 
     prefs['last_update_check'] = _stamp()
     try:
+        say('checking for a newer epubveri')
         sums = bin_mod.latest_checksums(timeout=_CHECK_TIMEOUT)
         wanted = sums.get(bin_mod.asset_name())
         prefs['last_update_success'] = prefs['last_update_check']
         if wanted and wanted != prefs.get('installed_sha256'):
             before = runner.binary_version(path) or ''
+            say('downloading a newer epubveri')
             _p, archive_sha, binary_sha = bin_mod.download_binary(
                 _data_dir(), expected=wanted)
             remember(archive_sha, binary_sha)
             after = runner.binary_version(path) or ''
-            return path, _update_note(before, after)
+            note = _update_note(before, after)
+            say(note)
+            return path, note
+        say('epubveri is up to date')
     except Exception:                                   # noqa: BLE001
         # Offline, rate-limited, a changed release layout — none of it is a
         # reason to refuse to validate the book in front of us.
@@ -1112,6 +1122,30 @@ class EpubVeriTool(Tool):
             self.register_shortcut(action, 'epubveri-validate')
         return action
 
+    def status(self, message, timeout=5):
+        """One line in the editor's status bar, painted immediately.
+
+        Doitsu asked for these (MobileRead 374940 #21): something should say
+        that the book is being checked, that an update is being looked for or
+        fetched, and how it turned out.
+
+        **`processEvents` is not decoration.** A validation runs on the UI
+        thread, so a message set before the work is queued behind it and
+        appears only once the thing it describes has finished — which is the
+        same as not showing it. calibre's own `show_status_message` is used
+        when it is there, and the bar directly when it is not, because
+        `minimum_calibre_version` claims releases this was not checked in.
+        """
+        text = 'epubveri: %s' % message
+        show = getattr(self.gui, 'show_status_message', None)
+        if show is not None:
+            show(text, timeout)
+        else:
+            bar = self.gui.statusBar()
+            if bar is not None:
+                bar.showMessage(text, int(timeout * 1000))
+        QApplication.processEvents()
+
     def show_panel(self):
         """Bring the results back without validating again.
 
@@ -1184,7 +1218,7 @@ class EpubVeriTool(Tool):
                                 show=True)
 
         try:
-            binary, update_note = _ensure_binary()
+            binary, update_note = _ensure_binary(self.status)
         except Exception as exc:                        # noqa: BLE001
             return error_dialog(self.gui, 'epubveri', _install_failure(exc),
                                 show=True)
@@ -1202,6 +1236,7 @@ class EpubVeriTool(Tool):
                     'The book could not be packaged for validation: %s' % exc,
                     show=True)
             try:
+                self.status('checking the book')
                 envelope = runner.run_epubveri(binary, epub_path)
             except EnvelopeError as exc:
                 return error_dialog(self.gui, 'epubveri', str(exc), show=True)
@@ -1258,11 +1293,24 @@ class EpubVeriTool(Tool):
         if update_note:
             summary += '\n[%s]' % update_note
 
-        # One dock, cleared and refilled. The dialog this replaces had to
-        # close its predecessor by hand or validating three times left three
-        # windows, two of them describing a book that had since been edited.
+        self.status(verdict, timeout=10)
+
+        # **Nothing to list: a message box, and the panel stays shut.**
+        # Doitsu's words (MobileRead 374940 #21): "if no problems were found,
+        # simply display a message box instead of an empty widget." A panel
+        # that opens to say nothing takes space on the screen at the moment
+        # the user is finished with it.
+        #
+        # A panel already open is still refilled — leaving the previous book's
+        # findings under a clean verdict would be worse than either — but it
+        # is neither opened nor raised.
         dock = self._ensure_dock()
         self._validated = True
         self._panel.show_results(shown, summary, envelope)
+        if not shown:
+            return info_dialog(self.gui, 'epubveri', summary, show=True)
+        # One dock, cleared and refilled. The dialog this replaces had to
+        # close its predecessor by hand or validating three times left three
+        # windows, two of them describing a book that had since been edited.
         dock.show()
         dock.raise_()
