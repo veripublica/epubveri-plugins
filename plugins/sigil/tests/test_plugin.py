@@ -620,8 +620,20 @@ class PackageTests(unittest.TestCase):
         sys.path.insert(0, PLUGIN_DIR)
         import build
 
+        # **Built into a temp directory, and this is not tidiness.** `build()`
+        # writes to `dist/<editor>/`, and the cleanup below used to be
+        # `rmtree(os.path.dirname(path))` — so running the tests after a build
+        # deleted the archive that had just been built, and `dist/` emptying
+        # itself went unexplained for days. `DIST` is read inside `build()`,
+        # so pointing it somewhere disposable is enough.
+        outdir = tempfile.mkdtemp(prefix='epubveri-build-')
+        build.DIST = outdir
         path = build.build()
         try:
+            self.assertTrue(
+                os.path.abspath(path).startswith(os.path.abspath(outdir)),
+                "the build ignored DIST, so this test is about to delete a "
+                "real dist/ directory: %s" % path)
             # Sigil's own derivation of the expected folder name.
             basename = os.path.splitext(os.path.basename(path))[0]
             expected = basename.split("_")[0]
@@ -657,7 +669,7 @@ class PackageTests(unittest.TestCase):
             self.assertFalse([n for n in names if "/tests/" in n])
         finally:
             import shutil
-            shutil.rmtree(os.path.dirname(path), ignore_errors=True)
+            shutil.rmtree(outdir, ignore_errors=True)
 
 
 class RunTests(unittest.TestCase):

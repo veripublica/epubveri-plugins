@@ -561,8 +561,20 @@ class PackageTests(unittest.TestCase):
         build = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(build)
 
+        # **Built into a temp directory, and this is not tidiness.** `build()`
+        # writes to `dist/<editor>/`, and the cleanup below used to be
+        # `rmtree(os.path.dirname(path))` — so running the tests after a build
+        # deleted the archive that had just been built, and `dist/` emptying
+        # itself went unexplained for days. `DIST` is read inside `build()`,
+        # so pointing it somewhere disposable is enough.
+        outdir = tempfile.mkdtemp(prefix='epubveri-build-')
+        build.DIST = outdir
         path = build.build()
         try:
+            self.assertTrue(
+                os.path.abspath(path).startswith(os.path.abspath(outdir)),
+                "the build ignored DIST, so this test is about to delete a "
+                "real dist/ directory: %s" % path)
             with zipfile.ZipFile(path) as zf:
                 names = zf.namelist()
             self.assertIn('__init__.py', names)
@@ -577,7 +589,7 @@ class PackageTests(unittest.TestCase):
             self.assertFalse([n for n in names if n.endswith('/epubveri')])
             self.assertFalse([n for n in names if n.startswith('tests/')])
         finally:
-            shutil.rmtree(os.path.dirname(path), ignore_errors=True)
+            shutil.rmtree(outdir, ignore_errors=True)
 
 
 class ActionTests(unittest.TestCase):
