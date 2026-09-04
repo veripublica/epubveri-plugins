@@ -221,6 +221,30 @@ _ON_VALUES = frozenset(["yes", "true", "on", "1", "y"])
 _DISPLAY_KEYS = ("show_usage", "show_advisory", "show_summary")
 _DISPLAY_DEFAULT = True
 
+#: The order the findings are handed to Sigil in. **This setting is the only
+#: lever there is here**, because Sigil draws the table: its own columns are
+#: File / Line / Offset / Message with no severity among them, and its
+#: `setSortingEnabled(true)` therefore sorts severity alphabetically when a
+#: user clicks Message — `ERROR < FATAL < INFO < USAGE < WARNING`, a fatal
+#: below an error. The calibre plugin has clickable columns and treats its own
+#: setting as the order the panel *opens* in; the words are the same in both,
+#: and they are epubveri's own `--sort` values rather than a third vocabulary.
+_SORT_KEY = "sort"
+_SORT_DEFAULT = "severity"
+SORT_ORDERS = ("severity", "severity-low", "document")
+
+#: Severest first. Advisory findings come last: they are emitted at usage
+#: severity and they never move the verdict.
+_RANK = {
+    "FATAL": 0,
+    "ERROR": 1,
+    "WARNING": 2,
+    "INFO": 3,
+    "USAGE": 4,
+    "ADVISORY": 5,
+}
+_RANK_UNKNOWN = 99
+
 #: **The safe direction here is the opposite of `autoupdate`'s, and that is
 #: the whole reason this is a separate list.**
 #:
@@ -256,6 +280,44 @@ def _display_prefs(bk, prefs):
         bk.savePrefs(prefs)
     return dict(usage=show["show_usage"], advisory=show["show_advisory"],
                 summary=show["show_summary"])
+
+
+def _sort_order(bk, prefs):
+    """The chosen order, from the same file the display switches live in.
+
+    An unrecognised word opens the way the default does, for the reason the
+    display switches list their *off* values rather than their on ones: a
+    hand-typed setting must fail towards what the user cannot be harmed by
+    not having chosen. Here that is the order we would have picked anyway.
+    """
+    value = prefs.get(_SORT_KEY)
+    if value is None:
+        # First run: write the default so the file shows the choice exists.
+        prefs[_SORT_KEY] = _SORT_DEFAULT
+        bk.savePrefs(prefs)
+        return _SORT_DEFAULT
+    value = str(value).strip().lower()
+    return value if value in SORT_ORDERS else _SORT_DEFAULT
+
+
+def _ordered(findings, order):
+    """`findings` in the order asked for.
+
+    `document` hands them over exactly as epubveri produced them — the JSON
+    envelope is always in document order, on purpose, so that a tool never
+    sees an order its user chose.
+
+    The severity orders sort on the rank **alone**, which is what keeps each
+    group reading top-to-bottom: Python's sort is stable, so findings of one
+    severity stay in the order the book put them in. That is what epubveri's
+    own `--sort severity` promises ("within each group the file order is
+    unchanged"), and `reverse=True` keeps that property too.
+    """
+    if order == "document":
+        return list(findings)
+    return sorted(findings,
+                  key=lambda f: _RANK.get(_label(f), _RANK_UNKNOWN),
+                  reverse=(order == "severity-low"))
 
 
 def _updates_allowed(bk, prefs):
@@ -557,14 +619,14 @@ def _fail(bk, message):
     return -1
 
 
-def _report(bk, envelope, workdir, show):
+def _report(bk, envelope, workdir, show, order=_SORT_DEFAULT):
     """Put the findings into Sigil's validation panel.
 
     Returns `{"shown": n, "usage": n, "advisory": n}` — the rows written, and
     the rows withheld per category, because the summary has to say so.
     """
     counts = {"shown": 0, "usage": 0, "advisory": 0}
-    for finding in sorted(envelope.findings, key=lambda f: f.sort_key):
+    for finding in _ordered(envelope.findings, order):
         # `ADV-*`/`NEXT-*` are emitted AT usage severity, so the advisory test
         # has to come first or `show_usage: false` would silently take the
         # advisories with it — two switches, one of them doing the other's
@@ -620,6 +682,7 @@ def run(bk):
     # one that creates it on a first run, and it saves `autoupdate` and the
     # update bookkeeping through its own copy.
     show = _display_prefs(bk, bk.getPrefs())
+    order = _sort_order(bk, bk.getPrefs())
 
     tmpdir = tempfile.mkdtemp(prefix="epubveri-sigil-")
     try:
@@ -640,7 +703,7 @@ def run(bk):
             return _fail(bk, "epubveri could not read the book: %s"
                          % (envelope.error or "no reason given"))
 
-        counts = _report(bk, envelope, workdir, show)
+        counts = _report(bk, envelope, workdir, show, order)
         verdict = "VALID" if envelope.is_valid else "NOT VALID"
         # The verdict line quotes only errors and fatals, because that is what
         # decides it and what epubcheck would print. Usage notes and

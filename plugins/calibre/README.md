@@ -51,6 +51,15 @@ Drag it where you want it, tab it behind another panel, or close it — calibre
 remembers where you put it, and a validation brings it back. It stays hidden
 until you run one.
 
+Findings arrive **severest first**, and each severity group still reads
+top-to-bottom in book order. Click any column header to reorder — Severity,
+File, Line or Message — and click it again to reverse. Severity sorts by rank
+rather than alphabetically and Line counts rather than spells, so a fatal is
+never below an error and line 9 is never below line 10. To change the order
+the panel *opens* in, use *Preferences → Plugins → epubveri → Customize*:
+`severity` (the default), `severity-low` or `document`, the same words
+epubveri's own `--sort` uses.
+
 Rows are tinted by severity — red for fatal and error, yellow for warning,
 cyan for info, usage and advisory — in the colours Doitsu's plugin uses, so
 the two look alike. In a dark theme the same families are used at dark

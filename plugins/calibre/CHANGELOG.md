@@ -3,9 +3,11 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
-## [0.2.1] — unreleased
+## [0.3.0] — unreleased
 
-Two things the first day of the dock showed, both reported from thread 374940.
+Minor rather than patch: two of these change what the panel does, not only
+what it gets right. Everything here was reported in thread 374940 on the
+first day the dock existed.
 
 - **The panel no longer comes back on screen at startup.** thiago.eec asked
   for it to stay hidden the way the EPUBCheck and ACE plugins do (#20) and
@@ -24,6 +26,42 @@ Two things the first day of the dock showed, both reported from thread 374940.
   visible again, which is today's behaviour: a wrong guess costs the request,
   not the plugin. A panel that already has findings in it is never closed
   underneath the user, whatever the timers do.
+
+- **Sortable columns, opening severest first.** thiago.eec asked for
+  sortable columns "particularly by severity" (#20); Doitsu agreed (#21).
+  Click any header to reorder, click again to reverse — and the first column
+  is called **Severity** now, because a column you are meant to click has to
+  say what it is.
+
+  Two things a table like this gets wrong when it is simply handed to Qt, and
+  both are avoided here: **severity would sort alphabetically**, which orders
+  it ERROR, FATAL, INFO, USAGE, WARNING and puts a fatal below an error; and
+  **the line number would sort as text**, putting line 10 before line 9.
+  Sigil's own results table has the second one. Ranking is by severity with
+  advisories last — they never move the verdict — and every column breaks ties
+  on the order epubveri produced the findings in, so **each severity group
+  still reads top-to-bottom**, which is what epubveri's own `--sort severity`
+  promises.
+
+  **The panel now opens severest first**, where before it opened in the order
+  the validator emitted. Three things already agreed on that order and this
+  plugin was the one out of step: epubveri's CLI shows a person severity-first
+  by default, calibre's own Check Book sorts `(100 - level, name)`, and — the
+  one nobody had noticed — **the Sigil plugin has always sorted by severity**.
+  The JSON envelope is in document order on purpose, so that a tool never
+  inherits an order its user chose; picking one is the plugin's job and it had
+  not been done.
+
+- **A setting for that order:** *Preferences → Plugins → epubveri → Customize*.
+  Three values, and they are epubveri's own `--sort` words rather than a
+  vocabulary invented for plugins: `severity` (the default), `severity-low`,
+  `document`. It decides how the panel **opens**; a header click beats it for
+  the rest of the session and nothing about the order survives a restart. An
+  order chosen for one book is a passing thought, not a setting.
+
+  `document` is offered by **not sorting at all** — Qt has no unsorted state
+  once sorting is enabled — and clicking a header still works from there, so
+  choosing it does not cost the feature.
 
 - **The rows are tinted by severity again.** thiago.eec asked for the line
   colours he had in Doitsu's plugin (#20) and Doitsu posted the set from his

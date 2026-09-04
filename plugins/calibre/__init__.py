@@ -12,7 +12,7 @@
 from calibre.customize import EditBookToolPlugin
 
 PLUGIN_NAME = 'epubveri'
-PLUGIN_VERSION_TUPLE = (0, 2, 1)
+PLUGIN_VERSION_TUPLE = (0, 3, 0)
 PLUGIN_VERSION = '.'.join(str(part) for part in PLUGIN_VERSION_TUPLE)
 
 

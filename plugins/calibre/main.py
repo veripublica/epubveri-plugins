@@ -41,8 +41,8 @@ from calibre.gui2 import error_dialog
 from calibre.gui2.tweak_book.plugin import Tool
 from calibre.utils.config import JSONConfig
 from qt.core import (QAbstractItemView, QBrush, QCheckBox, QColor,
-                     QDockWidget, QLabel, QPalette, QTimer, QTreeWidget,
-                     QTreeWidgetItem, QVBoxLayout, QWidget, Qt)
+                     QComboBox, QDockWidget, QLabel, QPalette, QTimer,
+                     QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, Qt)
 
 # The plugin's own package, never a bare `from client import ...` with the
 # plugin folder pushed onto sys.path: `client` is a name any other plugin
@@ -63,6 +63,14 @@ prefs.defaults['autoupdate'] = True
 #: hide findings from someone who does not know they exist.
 prefs.defaults['show_usage'] = True
 prefs.defaults['show_advisory'] = True
+#: The order the panel opens in. The words are epubveri's own — `--sort
+#: severity|document` — rather than a third vocabulary invented for plugins,
+#: and the Sigil plugin's JSON uses the same key and the same values.
+#: `severity` is the default because it is what the CLI shows a person and
+#: what calibre's own Check Book does (`sorted(key=(100 - level, name))`),
+#: so the same book does not arrive in two different orders depending on
+#: where you are standing.
+prefs.defaults['sort'] = 'severity'
 
 _UPDATE_INTERVAL = timedelta(hours=1)
 _STALE_AFTER = timedelta(days=30)
@@ -381,6 +389,33 @@ _TINTS_DARK = {
 }
 
 
+#: Severest first, and the reason this table exists at all: the words sort
+#: alphabetically as ERROR < FATAL < INFO < USAGE < WARNING, which puts a
+#: fatal *below* an error. Advisory findings come last on purpose — they
+#: never move the verdict.
+_RANK = {
+    'FATAL': 0,
+    'ERROR': 1,
+    'WARNING': 2,
+    'INFO': 3,
+    'USAGE': 4,
+    'ADVISORY': 5,
+}
+
+#: A label this build does not know sorts after everything it does, rather
+#: than silently landing among the errors.
+_RANK_UNKNOWN = 99
+
+#: Column numbers, named because three separate places have to agree.
+COL_SEVERITY, COL_FILE, COL_LINE, COL_MESSAGE = range(4)
+
+SORT_ORDERS = ('severity', 'severity-low', 'document')
+
+
+def _rank(label):
+    return _RANK.get(label, _RANK_UNKNOWN)
+
+
 def _is_dark(widget):
     """Is this widget sitting on a dark background?
 
@@ -430,6 +465,12 @@ class ConfigWidget(QWidget):
     The other two only decide what the panel lists. **Both start on**, so the
     same book gets the same report from calibre and from Sigil until someone
     chooses otherwise.
+
+    The sort box says how the panel **opens**, not how it stays: a header
+    click beats it for the rest of the session. It is here because a setting
+    is the only lever the Sigil plugin has — Sigil draws its own table — and
+    the two plugins are worth keeping answerable to the same words, which are
+    epubveri's own `--sort` values.
     """
 
     def __init__(self):
@@ -460,6 +501,21 @@ class ConfigWidget(QWidget):
             'or the exit code: a book that passes epubcheck passes epubveri.')
         layout.addWidget(self.show_advisory)
 
+        layout.addWidget(QLabel('Open the results sorted by:', self))
+        self.sort = QComboBox(self)
+        for value, text in (
+                ('severity', 'Most severe first'),
+                ('severity-low', 'Least severe first'),
+                ('document', 'The order they occur in the book')):
+            self.sort.addItem(text, value)
+        chosen = self.sort.findData(
+            str(prefs.get('sort') or 'severity').strip().lower())
+        self.sort.setCurrentIndex(chosen if chosen >= 0 else 0)
+        self.sort.setToolTip(
+            'Only how the panel opens. Click any column header to reorder '
+            'what is already there — click again to reverse it.')
+        layout.addWidget(self.sort)
+
         note = QLabel(
             'epubveri itself is downloaded once, on first use, and verified '
             'against the release checksums before it is ever run.\nClearing '
@@ -473,6 +529,44 @@ class ConfigWidget(QWidget):
         prefs['autoupdate'] = self.check_updates.isChecked()
         prefs['show_usage'] = self.show_usage.isChecked()
         prefs['show_advisory'] = self.show_advisory.isChecked()
+        prefs['sort'] = self.sort.currentData()
+
+
+class ResultRow(QTreeWidgetItem):
+    """A row that knows how it compares to another one.
+
+    Two things go wrong when a table like this is simply handed to Qt, and
+    both are visible in the plugins this one sits beside. **Severity sorts
+    alphabetically** — `ERROR < FATAL < INFO < USAGE < WARNING`, so a fatal
+    lands below an error — and **the line number sorts as text**, so line 10
+    comes before line 9. Sigil's own results table has the second one
+    (`QTableWidgetItem(QString::number(line))`), and any table that keeps a
+    severity as a word has the first.
+
+    `position` is the order epubveri produced the finding in, and it is the
+    tie-breaker for every column. That is what makes "severest first" still
+    read top-to-bottom inside each group — the same thing epubveri's own
+    `--sort severity` does, rather than shuffling a group.
+    """
+
+    def __init__(self, parent, position, line):
+        QTreeWidgetItem.__init__(self, parent)
+        self.position = position
+        self.line = line
+
+    def sort_key(self, column):
+        if column == COL_SEVERITY:
+            return (_rank(self.text(COL_SEVERITY)), self.position)
+        if column == COL_LINE:
+            # A finding with no line sorts before line 1 rather than
+            # wherever an empty string happens to fall.
+            return (-1 if self.line is None else self.line, self.position)
+        return (self.text(column), self.position)
+
+    def __lt__(self, other):
+        tree = self.treeWidget()
+        column = COL_SEVERITY if tree is None else tree.sortColumn()
+        return self.sort_key(column) < other.sort_key(column)
 
 
 class ResultsPanel(QWidget):
@@ -490,6 +584,10 @@ class ResultsPanel(QWidget):
     are what a panel gets for free and a floating window never does.
     """
 
+    #: The `sort` setting is applied to the first run of a session and to no
+    #: later one, so that a header click is not undone by validating again.
+    _sorted_once = False
+
     def __init__(self, tool, parent=None):
         QWidget.__init__(self, parent)
         self.tool = tool
@@ -504,7 +602,14 @@ class ResultsPanel(QWidget):
         layout.addWidget(self.summary)
 
         self.items = QTreeWidget(self)
-        self.items.setHeaderLabels(['', 'File', 'Line', 'Message'])
+        # The first column had no name while nothing could sort by it.
+        # thiago.eec asked for sortable columns "particularly by severity"
+        # (MobileRead 374940 #20), and a column you are meant to click has to
+        # say what it is.
+        self.items.setHeaderLabels(['Severity', 'File', 'Line', 'Message'])
+        self.items.header().setSortIndicatorShown(True)
+        self.items.header().setSectionsClickable(True)
+        self.items.header().sectionClicked.connect(self.sort_by)
         self.items.setRootIsDecorated(False)
         self.items.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection)
@@ -523,12 +628,20 @@ class ResultsPanel(QWidget):
         a single object, so the same guarantee comes from clearing it.
         """
         self.summary.setText(summary)
+        # Whatever the user last clicked survives the next validation, and
+        # nothing of it survives a restart: an order chosen for one book is a
+        # passing thought, not a setting. Filling happens with sorting off,
+        # so the rows are not re-sorted once per row as they arrive.
+        sorting = self.items.isSortingEnabled()
+        column = self.items.sortColumn()
+        direction = self.items.header().sortIndicatorOrder()
+        self.items.setSortingEnabled(False)
         self.items.clear()
         # Asked once per run, not once per row, and asked again on every run
         # so that changing the theme with the editor open is picked up.
         dark = _is_dark(self)
-        for finding in findings:
-            item = QTreeWidgetItem(self.items)
+        for position, finding in enumerate(findings):
+            item = ResultRow(self.items, position, finding.line)
             item.setText(0, _label(finding))
             item.setText(1, finding.location or '')
             item.setText(2, str(finding.line) if finding.line else '')
@@ -546,8 +659,43 @@ class ResultsPanel(QWidget):
                 brush = QBrush(colour)
                 for column in range(self.items.columnCount()):
                     item.setBackground(column, brush)
+        if not self._sorted_once:
+            self._sorted_once = True
+            sorting, column, direction = self._opening_order()
+        if sorting:
+            self.items.setSortingEnabled(True)
+            self.items.sortItems(column, direction)
         for column in range(3):
             self.items.resizeColumnToContents(column)
+
+    def _opening_order(self):
+        """How the panel opens, from the `sort` setting.
+
+        `document` is *not* a sort: the rows stay in the order epubveri
+        produced them and no column is sorted until the user clicks one.
+        Qt has no unsorted state once sorting is enabled, so the only way to
+        offer that order honestly is not to sort at all.
+        """
+        order = str(prefs.get('sort') or 'severity').strip().lower()
+        if order == 'document':
+            return False, COL_SEVERITY, Qt.SortOrder.AscendingOrder
+        if order == 'severity-low':
+            return True, COL_SEVERITY, Qt.SortOrder.DescendingOrder
+        # Anything unrecognised opens the way the default does. A typo in a
+        # settings file should not produce an order nobody chose.
+        return True, COL_SEVERITY, Qt.SortOrder.AscendingOrder
+
+    def sort_by(self, column):
+        """The first header click, when the panel opened in document order.
+
+        Every click after this one is Qt's own, because sorting is enabled by
+        then; this exists so that choosing `document` does not also mean
+        giving up the ability to sort.
+        """
+        if self.items.isSortingEnabled():
+            return
+        self.items.setSortingEnabled(True)
+        self.items.sortItems(column, Qt.SortOrder.AscendingOrder)
 
     def go_to(self, item):
         """Open the file and put the cursor on the finding.

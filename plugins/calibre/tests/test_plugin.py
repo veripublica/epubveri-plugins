@@ -140,6 +140,16 @@ class Finding(object):
 _app = None
 
 
+def Qt_sort_order_descending():
+    from qt.core import Qt
+    return Qt.SortOrder.DescendingOrder
+
+
+def Qt_sort_order_ascending():
+    from qt.core import Qt
+    return Qt.SortOrder.AscendingOrder
+
+
 def qt_app():
     """One QApplication for the whole run; Qt allows no more."""
     global _app
@@ -687,6 +697,98 @@ class ResultsPanelTests(unittest.TestCase):
                     0, Qt.ItemDataRole.ForegroundRole),
                 "a foreground was forced, so the theme no longer decides")
 
+    def _labels(self, panel):
+        return [panel.items.topLevelItem(i).text(0)
+                for i in range(panel.items.topLevelItemCount())]
+
+    def _sorted_panel(self, findings, order='severity'):
+        saved = plugin.prefs['sort']
+        try:
+            plugin.prefs['sort'] = order
+            return self._panel(findings)
+        finally:
+            plugin.prefs['sort'] = saved
+
+    def test_the_panel_opens_severest_first(self):
+        """The words sort alphabetically as ERROR < FATAL < INFO < USAGE <
+        WARNING, so a table left to Qt puts a fatal below an error. Severity
+        is the default because it is what epubveri's own CLI shows a person
+        and what calibre's Check Book does."""
+        panel = self._sorted_panel([Finding('usage'), Finding('info'),
+                                    Finding('error'), Finding('fatal'),
+                                    Finding('usage', advisory=True),
+                                    Finding('warning')])
+        self.assertEqual(self._labels(panel),
+                         ['FATAL', 'ERROR', 'WARNING', 'INFO', 'USAGE',
+                          'ADVISORY'])
+
+    def test_inside_one_severity_the_book_order_is_kept(self):
+        """What `--sort severity` does in the CLI: group by severity, and
+        leave each group reading top-to-bottom. A sort that shuffled a group
+        would make the panel harder to work through, not easier."""
+        panel = self._sorted_panel([
+            Finding('error', location='c.xhtml', line=3),
+            Finding('usage', location='a.xhtml', line=1),
+            Finding('error', location='a.xhtml', line=9),
+            Finding('error', location='b.xhtml', line=1)])
+        rows = [(panel.items.topLevelItem(i).text(0),
+                 panel.items.topLevelItem(i).text(1))
+                for i in range(4)]
+        self.assertEqual(rows, [('ERROR', 'c.xhtml'), ('ERROR', 'a.xhtml'),
+                                ('ERROR', 'b.xhtml'), ('USAGE', 'a.xhtml')])
+
+    def test_least_severe_first_is_the_same_table_reversed(self):
+        panel = self._sorted_panel([Finding('usage'), Finding('fatal'),
+                                    Finding('warning')],
+                                   order='severity-low')
+        self.assertEqual(self._labels(panel), ['USAGE', 'WARNING', 'FATAL'])
+
+    def test_the_line_column_counts_rather_than_spells(self):
+        """9 before 10, which is not what a table of strings does. Sigil's own
+        results table has this the other way round — it builds the cell with
+        `QTableWidgetItem(QString::number(line))` — and so does any plugin
+        that hands Qt plain text."""
+        panel = self._sorted_panel([Finding('error', line=9),
+                                    Finding('error', line=10),
+                                    Finding('error', line=100),
+                                    Finding('error', line=None)])
+        # What a click ends up doing. `sectionClicked` is only the wiring
+        # for the first click in document order; QHeaderView sorts through
+        # its own internal handling, which `emit` does not reach.
+        panel.items.sortItems(plugin.COL_LINE, Qt_sort_order_ascending())
+        self.assertEqual(
+            [panel.items.topLevelItem(i).text(2) for i in range(4)],
+            ['', '9', '10', '100'])
+
+    def test_document_order_is_left_alone_until_a_header_is_clicked(self):
+        """Qt has no unsorted state once sorting is on, so `document` is
+        offered by not sorting at all — and clicking a header has to still
+        work, or choosing that order would cost the user the feature."""
+        findings = [Finding('usage'), Finding('fatal'), Finding('warning')]
+        panel = self._sorted_panel(findings, order='document')
+        self.assertEqual(self._labels(panel), ['USAGE', 'FATAL', 'WARNING'])
+        self.assertFalse(panel.items.isSortingEnabled())
+
+        panel.items.header().sectionClicked.emit(plugin.COL_SEVERITY)
+        self.assertEqual(self._labels(panel), ['FATAL', 'WARNING', 'USAGE'])
+
+    def test_a_header_click_is_not_undone_by_validating_again(self):
+        """The setting says how the panel opens, once. After that the user's
+        click owns the order for the session — otherwise every validation
+        would quietly put it back."""
+        panel = self._sorted_panel([Finding('fatal'), Finding('usage')])
+        self.assertEqual(self._labels(panel), ['FATAL', 'USAGE'])
+        # The user clicks Severity a second time, reversing it.
+        panel.items.sortItems(plugin.COL_SEVERITY,
+                              Qt_sort_order_descending())
+        panel.show_results([Finding('fatal'), Finding('usage')], 'again')
+        self.assertEqual(self._labels(panel), ['USAGE', 'FATAL'])
+
+    def test_a_severity_we_do_not_know_sorts_last_not_among_the_errors(self):
+        panel = self._sorted_panel([Finding('mystery'), Finding('usage'),
+                                    Finding('error')])
+        self.assertEqual(self._labels(panel), ['ERROR', 'USAGE', 'MYSTERY'])
+
     def test_a_severity_we_do_not_know_is_left_untinted(self):
         """A word this table has never seen should look unremarkable rather
         than be filed under one of the three families by a default."""
@@ -1047,8 +1149,21 @@ class SummaryTests(unittest.TestCase):
 
 
 class ConfigWidgetTests(unittest.TestCase):
+    """**These build the page under Fusion rather than calibre's own style,
+    and the reason is a real crash.** With `CalibreStyle` active, building a
+    page containing a `QComboBox` here dies with SIGBUS inside
+    `CalibreStyle::standardIcon`, which asks the application object for an
+    icon through `QMetaObject::invokeMethod` — a round trip that wants more
+    of a calibre than `Application([])` is in a test process. calibre's own
+    preference pages are full of combo boxes, so this is the harness and not
+    the widget; the page is still worth building under a plain style, because
+    what these tests are about is which settings it shows and saves.
+    """
+
+    def setUp(self):
+        qt_app().setStyle('Fusion')
+
     def test_the_three_switches_show_and_save(self):
-        qt_app()
         saved = {k: plugin.prefs[k]
                  for k in ('autoupdate', 'show_usage', 'show_advisory')}
         try:
@@ -1074,6 +1189,41 @@ class ConfigWidgetTests(unittest.TestCase):
         finally:
             for key, value in saved.items():
                 plugin.prefs[key] = value
+
+    def test_the_sort_box_offers_epubveris_own_words_and_defaults_to_severity(
+            self):
+        """The values are `--sort`'s, so the CLI, this plugin and the Sigil
+        one can all be asked the same question in the same words. Severity is
+        the default: it is what the CLI shows a person, and what calibre's own
+        Check Book does."""
+        saved = plugin.prefs['sort']
+        try:
+            plugin.prefs['sort'] = 'severity'
+            widget = plugin.ConfigWidget()
+            values = [widget.sort.itemData(i)
+                      for i in range(widget.sort.count())]
+            self.assertEqual(values, list(plugin.SORT_ORDERS))
+            self.assertEqual(widget.sort.currentData(), 'severity')
+
+            widget.sort.setCurrentIndex(values.index('document'))
+            widget.save_settings()
+            self.assertEqual(plugin.prefs['sort'], 'document')
+            reopened = plugin.ConfigWidget()
+            self.assertEqual(reopened.sort.currentData(), 'document')
+        finally:
+            plugin.prefs['sort'] = saved
+
+    def test_a_settings_file_with_a_word_we_do_not_know_still_opens(self):
+        """Hand-edited files are a supported way to set these — DNSB says he
+        edits the Sigil plugin's JSON rather than using a dialog. A typo must
+        land on the default rather than on an empty box."""
+        saved = plugin.prefs['sort']
+        try:
+            plugin.prefs['sort'] = 'sevrity'
+            widget = plugin.ConfigWidget()
+            self.assertEqual(widget.sort.currentData(), 'severity')
+        finally:
+            plugin.prefs['sort'] = saved
 
 
 def run():

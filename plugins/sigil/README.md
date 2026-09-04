@@ -110,7 +110,8 @@ the file shows you which choices exist:
   "autoupdate": true,
   "show_usage": true,
   "show_advisory": true,
-  "show_summary": true
+  "show_summary": true,
+  "sort": "severity"
 }
 ```
 
@@ -120,6 +121,27 @@ the file shows you which choices exist:
 | `show_advisory` | `ADVISORY` lines are not listed |
 | `show_summary` | no summary line, ever |
 | `autoupdate` | nothing is ever requested over the network |
+
+`sort` takes a word rather than a switch:
+
+| `sort` | the findings arrive |
+|---|---|
+| `severity` (default) | worst first — fatal, error, warning, info, usage, then advisory |
+| `severity-low` | the same groups, reversed |
+| `document` | in the order they occur in the book |
+
+Whichever you choose, a severity group still reads top-to-bottom in book
+order; only the groups move. The words are epubveri's own — the command line
+takes `--sort severity` and `--sort document` — and the calibre plugin's
+setting uses the same three, so the two never need different vocabulary.
+
+**Why this is a setting and not a click.** Sigil draws the results table, and
+its columns are File, Line, Offset and Message — there is no severity column,
+and clicking Message sorts the words alphabetically, which orders them ERROR,
+FATAL, INFO, USAGE, WARNING and puts a fatal below an error. The order we hand
+over is the only correct severity order available here. (The calibre plugin
+draws its own table, so there the columns are clickable and this setting only
+decides how the panel opens.)
 
 Three things are worth knowing before you change any of them.
 

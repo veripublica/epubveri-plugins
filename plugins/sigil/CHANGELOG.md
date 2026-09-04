@@ -3,6 +3,34 @@
 This plugin is versioned independently of the calibre plugin and of epubveri
 itself. The version Sigil shows comes from `plugin.xml`.
 
+## [0.3.0] — unreleased
+
+- **The order of the findings is a setting now**, in the same JSON file as
+  the display switches: `"sort"`, one of `severity` (the default),
+  `severity-low` or `document`. The words are epubveri's own `--sort` values
+  and the calibre plugin's setting uses exactly the same three, so the two
+  can be asked the same question in the same words.
+
+  **A setting is the only lever this plugin has**, and that is worth stating
+  because the calibre one also has clickable columns. Sigil draws its own
+  results table: its columns are File / Line / Offset / Message with no
+  severity among them, and its sorting is alphabetical — so a user who clicks
+  Message gets ERROR, FATAL, INFO, USAGE, WARNING, with a fatal below an
+  error. What we choose to send is the only correct severity order available
+  here.
+
+  Severest first was already what this plugin did; what changed is that it
+  can now be asked for something else, and that **each severity group keeps
+  the book's order** instead of being re-sorted by file name. That is what
+  epubveri's `--sort severity` promises — "within each group the file order is
+  unchanged" — and it is the same rule the calibre panel now follows.
+  Advisory findings sort last: they never move the verdict.
+
+  Written into the preferences file on first run, like the display switches,
+  because the file is the only place it can be changed and therefore has to
+  be the place it can be found. A word that is not one of the three opens the
+  way the default does.
+
 ## [0.2.0] — 2026-09-04
 
 Both from Doitsu, MobileRead 374939 #21.

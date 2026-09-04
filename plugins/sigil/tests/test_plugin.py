@@ -945,6 +945,95 @@ class DisplaySettingsTests(unittest.TestCase):
 
 
 @unittest.skipIf(_binary() is None, "set EPUBVERI_BINARY")
+class SortSettingTests(unittest.TestCase):
+    """The order the rows are handed to Sigil in.
+
+    **A setting is the only lever here.** Sigil draws the table, its columns
+    are File / Line / Offset / Message with no severity among them, and its
+    own sorting is alphabetical — so clicking Message orders the severities
+    ERROR, FATAL, INFO, USAGE, WARNING, with a fatal below an error. What we
+    choose to send is the only correct severity order a Sigil user can get.
+    """
+
+    class Fake(object):
+        def __init__(self, severity, tag, advisory=False):
+            self.severity = severity
+            self.is_advisory = advisory
+            self.tag = tag
+
+    def _tags(self, findings, order):
+        return [f.tag for f in plugin._ordered(findings, order)]
+
+    def _mixed(self):
+        return [self.Fake('usage', 'u1'), self.Fake('error', 'e1'),
+                self.Fake('usage', 'a1', advisory=True),
+                self.Fake('fatal', 'f1'), self.Fake('error', 'e2'),
+                self.Fake('warning', 'w1')]
+
+    def test_severity_puts_the_worst_first_and_advisories_last(self):
+        self.assertEqual(self._tags(self._mixed(), 'severity'),
+                         ['f1', 'e1', 'e2', 'w1', 'u1', 'a1'])
+
+    def test_each_group_still_reads_in_book_order(self):
+        """epubveri's own `--sort severity` promises it: "within each group
+        the file order is unchanged". The sort is on the rank alone and
+        Python's sort is stable, so a group is never shuffled."""
+        findings = [self.Fake('error', 'third'), self.Fake('error', 'first'),
+                    self.Fake('error', 'second')]
+        self.assertEqual(self._tags(findings, 'severity'),
+                         ['third', 'first', 'second'])
+
+    def test_severity_low_reverses_the_groups_not_their_contents(self):
+        self.assertEqual(self._tags(self._mixed(), 'severity-low'),
+                         ['a1', 'u1', 'w1', 'e1', 'e2', 'f1'])
+
+    def test_document_hands_them_over_exactly_as_they_arrived(self):
+        """The JSON envelope is always in document order — epubveri does that
+        on purpose, so that a tool never sees an order its user chose."""
+        findings = self._mixed()
+        self.assertEqual(self._tags(findings, 'document'),
+                         ['u1', 'e1', 'a1', 'f1', 'e2', 'w1'])
+
+    def test_the_setting_is_written_into_the_file_on_first_run(self):
+        """Same reason as the display switches: the JSON is the only place it
+        can be changed, so it has to be the place it can be found."""
+        bk = FakeBk()
+        self.assertEqual(plugin._sort_order(bk, bk.getPrefs()), 'severity')
+        self.assertEqual(bk.prefs.get('sort'), 'severity')
+
+    def test_a_word_we_do_not_know_opens_the_way_the_default_does(self):
+        """Hand-typed settings are the supported route here — DNSB says he
+        edits the JSON rather than wanting a dialog — so a typo has to land
+        somewhere defensible rather than on an empty list."""
+        for written, expected in (('document', 'document'),
+                                  ('  SEVERITY-LOW ', 'severity-low'),
+                                  ('sevrity', 'severity'),
+                                  ('', 'severity'),
+                                  (7, 'severity')):
+            bk = FakeBk({'sort': written})
+            self.assertEqual(plugin._sort_order(bk, bk.getPrefs()), expected,
+                             written)
+
+    def test_a_real_run_comes_out_severest_first(self):
+        """The unit tests above are about a list; this is about the rows Sigil
+        is actually handed."""
+        if _binary() is None:
+            self.skipTest("no epubveri binary; set EPUBVERI_BINARY")
+        orig = plugin._binary_path
+        path = _binary()
+        plugin._binary_path = lambda: path
+        try:
+            bk = FakeBk()
+            code, texts, _out = run_capturing(bk)
+            self.assertEqual(code, 0)
+        finally:
+            plugin._binary_path = orig
+        ranks = [plugin._RANK.get(text.split(' ', 1)[0], plugin._RANK_UNKNOWN)
+                 for text in texts if text.split(' ', 1)[0] in plugin._RANK]
+        self.assertTrue(ranks, texts)
+        self.assertEqual(ranks, sorted(ranks), texts)
+
+
 class PluginVersionTests(unittest.TestCase):
     """Doitsu, MobileRead 374939 #21: "add the plugin version number for
     debugging purposes"."""
