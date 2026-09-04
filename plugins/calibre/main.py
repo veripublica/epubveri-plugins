@@ -41,7 +41,8 @@ from calibre.gui2 import error_dialog
 from calibre.gui2.tweak_book.plugin import Tool
 from calibre.utils.config import JSONConfig
 from qt.core import (QAbstractItemView, QCheckBox, QDockWidget, QLabel,
-                     QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, Qt)
+                     QTimer, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
+                     QWidget, Qt)
 
 # The plugin's own package, never a bare `from client import ...` with the
 # plugin folder pushed onto sys.path: `client` is a name any other plugin
@@ -83,14 +84,40 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+def _stamp():
+    """A moment, in the spelling this prefs file already had.
+
+    **Epoch seconds, because the key it goes into is not ours alone.**
+    calibre keys a plugin's preferences by the plugin's *name*, and Doitsu's
+    calibre plugin is also called `epubveri` — so both plugins read and write
+    one `plugins/epubveri.json`. His `last_update_check` is `time.time()`; we
+    used to write an ISO string into that same key, and his
+    `time.time() - last_checked` then raised `TypeError: unsupported operand
+    type(s) for -: 'float' and 'str'` for anyone who ran ours and then his.
+    Our own reader was already tolerant, so the damage was one-way and his.
+    """
+    return _now().timestamp()
+
+
 def _since(stamp):
-    """How long ago `stamp` was, or None if it is missing or unreadable."""
+    """How long ago `stamp` was, or None if it is missing or unreadable.
+
+    Two spellings are accepted on purpose: the epoch seconds written above,
+    and the ISO strings this plugin wrote up to 0.2.0 — a stored value is not
+    worth throwing away over a format change.
+    """
     if not stamp:
         return None
-    try:
-        when = datetime.fromisoformat(stamp)
-    except (TypeError, ValueError):
-        return None
+    if isinstance(stamp, (int, float)) and not isinstance(stamp, bool):
+        try:
+            when = datetime.fromtimestamp(stamp, timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            return None
+    else:
+        try:
+            when = datetime.fromisoformat(stamp)
+        except (TypeError, ValueError):
+            return None
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
     return _now() - when
@@ -138,7 +165,15 @@ def _integrity_failure(path):
 
 
 def _install_failure(exc):
-    """A sentence a calibre user can act on rather than a raw exception."""
+    """A sentence a calibre user can act on rather than a raw exception.
+
+    The last line is the fallback and it names the network, so anything that
+    is **not** about the network has to be recognised before it — otherwise a
+    problem on the disk arrives dressed as an offline machine, which is
+    exactly what 374940 #19 was.
+    """
+    if isinstance(exc, InstallPathError):
+        return str(exc)
     if isinstance(exc, bin_mod.DownloadError):
         return 'epubveri could not be installed: %s' % exc
     return ('epubveri could not be downloaded. The first run needs an '
@@ -173,10 +208,75 @@ def _data_dir():
     So the binary goes in a directory of our own next to the archive.
     `initialize_plugins` reads calibre's `plugins` config dict rather than
     listing that folder, so a subdirectory there disturbs nothing.
+
+    **The name is `epubveri-data` and not `epubveri`, because `epubveri` is
+    taken.** Doitsu's calibre plugin — the one in calibre's plugin index, the
+    one with the users — writes its copy of the binary to
+    `<config>/plugins/epubveri`, which on Linux and macOS is a **file** with
+    exactly the name we wanted for a folder. Read from his 0.0.7 source
+    (`epubveri_plugin_dir` + `epubveri_binary_name`), not guessed. That
+    collision goes both ways and neither tool can win it:
+
+    * his file is in our way — `os.makedirs` raises `[Errno 17] File exists`,
+      which is what PeterT met on his first run (MobileRead 374940 #19);
+    * our folder is in his way — his `shutil.copy2` would land the binary
+      *inside* it and he would then try to execute a directory.
+
+    So we move. He published first, his plugin is what people already have,
+    and a name nobody else uses costs us nothing. Windows was never affected:
+    his file is `epubveri.exe` there.
     """
-    path = os.path.join(config_dir, 'plugins', 'epubveri')
-    if not os.path.isdir(path):
-        os.makedirs(path)
+    return _prepare_data_dir(
+        os.path.join(config_dir, 'plugins', 'epubveri-data'),
+        legacy=os.path.join(config_dir, 'plugins', 'epubveri'))
+
+
+class InstallPathError(Exception):
+    """The folder the validator lives in cannot be created, because a name is
+    in the way. The user has to move something; nothing here can."""
+
+
+def _prepare_data_dir(path, legacy=None):
+    """`path` as a directory, or a sentence saying what is occupying it.
+
+    **PeterT met the old version of this on Linux** (MobileRead 374940 #19):
+    the first run said "epubveri could not be downloaded. The first run needs
+    an internet connection" and carried `[Errno 17] File exists` in brackets.
+    His connection was fine — something was already sitting at this path, and
+    the plugin blamed the network for a problem on the disk. He worked it out
+    himself and called it a false alarm; the message is what was wrong.
+
+    `os.path.isdir` is False both for a plain file **and for a symlink whose
+    target is gone**, and `os.makedirs` then raises `EEXIST` for either. So
+    the occupied case is separated from the missing one and reported with the
+    path in it, and the directory itself is created with `exist_ok=True` —
+    two editor windows starting together must not turn the same errno into a
+    second, unrelated version of this message.
+    """
+    if os.path.isdir(path):
+        return path
+    if legacy is not None and not os.path.lexists(path):
+        # A 0.2.0 install kept the binary under the shared name. Moving the
+        # folder rather than leaving it does two things at once: this plugin
+        # keeps the copy it already verified, and the name is free again for
+        # the plugin that owns it — which matters, because his code cannot
+        # work while a directory sits there.
+        ours = os.path.join(legacy, bin_mod.binary_filename())
+        if os.path.isdir(legacy) and os.path.isfile(ours):
+            try:
+                os.rename(legacy, path)
+                return path
+            except OSError:
+                # Nothing here is worth failing a validation for: fall
+                # through and install a fresh copy under the new name.
+                pass
+    if os.path.exists(path) or os.path.islink(path):
+        raise InstallPathError(
+            'epubveri keeps its validator in\n%s\nand that name is already '
+            'taken by something which is not a folder. Rename or remove it '
+            'and validate again. Nothing was installed and nothing was '
+            'changed.' % path)
+    os.makedirs(path, exist_ok=True)
     return path
 
 
@@ -199,7 +299,7 @@ def _ensure_binary():
     def remember(archive_sha, binary_sha):
         prefs['installed_sha256'] = archive_sha
         prefs['binary_sha256'] = binary_sha
-        prefs['last_update_check'] = _now().isoformat()
+        prefs['last_update_check'] = _stamp()
         prefs['last_update_success'] = prefs['last_update_check']
 
     if not os.path.isfile(path):
@@ -221,7 +321,7 @@ def _ensure_binary():
     if age is not None and age < _UPDATE_INTERVAL:
         return path, None
 
-    prefs['last_update_check'] = _now().isoformat()
+    prefs['last_update_check'] = _stamp()
     try:
         sums = bin_mod.latest_checksums(timeout=_CHECK_TIMEOUT)
         wanted = sums.get(bin_mod.asset_name())
@@ -473,6 +573,10 @@ class EpubVeriTool(Tool):
     #: not change: a saved layout that no longer matches loses the position
     #: the user put the panel in.
     DOCK_OBJECT_NAME = 'epubveri-results-dock'
+    #: True once this session has put findings in the panel. Read by
+    #: `_close_after_restore`, which must never close a panel someone
+    #: is reading.
+    _validated = False
 
     def _ensure_dock(self):
         """The results dock, created once and then reused.
@@ -525,7 +629,45 @@ class EpubVeriTool(Tool):
         self.gui.addDockWidget(Qt.DockWidgetArea.TopDockWidgetArea, dock)
         dock.close()
         self._dock = dock
+        self._close_after_restore()
         return dock
+
+    def _close_after_restore(self):
+        """Hidden at startup **even when the last session left it open.**
+
+        `dock.close()` above is not enough on its own. `restoreState` restores
+        a dock's visibility along with its area and size, so a session that
+        ended with the panel open started the next one with it open — over a
+        book nothing had validated yet, and with an empty panel. thiago.eec
+        asked for the opposite and Doitsu agreed (MobileRead 374940 #20, #21):
+        it should behave like the EPUBCheck and ACE plugins, which show
+        nothing until you ask them for something. Those two are dialogs, so
+        they get it for free; a dock has to be told.
+
+        **The position is still remembered — only the visibility is not.**
+        That is the whole reason this is a second, deferred close rather than
+        dropping the `objectName` and giving up on `restoreState`.
+
+        The ordering, which is what makes the two-step timer work rather than
+        being a superstition: `Main.__init__` calls `create_actions()` — where
+        this dock is built — and only then, at the end, queues
+        `QTimer.singleShot(0, self.restore_state)`. Zero timers fire in the
+        order they were registered, so the outer one here runs **before**
+        `restore_state`, and the inner one it registers goes behind it. If a
+        future calibre ever reorders that, the close lands early and the
+        behaviour is the one we have today: visible. A wrong guess costs the
+        request, not the plugin.
+
+        The `_validated` guard is the other half of that: whatever the timers
+        do, a panel showing findings is never closed under the user.
+        """
+        dock = self._dock
+
+        def close_it():
+            if not self._validated:
+                dock.close()
+
+        QTimer.singleShot(0, lambda: QTimer.singleShot(0, close_it))
 
     def _action_icon(self):
         """The toolbar icon, or a null one where there is no plugin zip.
@@ -652,6 +794,7 @@ class EpubVeriTool(Tool):
         # close its predecessor by hand or validating three times left three
         # windows, two of them describing a book that had since been edited.
         dock = self._ensure_dock()
+        self._validated = True
         self._panel.show_results(shown, summary)
         dock.show()
         dock.raise_()

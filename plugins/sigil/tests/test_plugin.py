@@ -662,10 +662,18 @@ class PackageTests(unittest.TestCase):
 
 class RunTests(unittest.TestCase):
     def setUp(self):
-        if _binary() is None:
+        # Resolved once and then handed over as a constant. Installing
+        # `_binary` itself here made these four tests recurse until Python
+        # gave up — it *calls* `plugin._binary_path()` when `EPUBVERI_BINARY`
+        # is unset — and the recursion arrived dressed as "epubveri could not
+        # be downloaded ... needs an internet connection", which is a
+        # sentence about the wrong thing entirely. The suite passed for
+        # whoever had that variable exported and failed for everyone else.
+        path = _binary()
+        if path is None:
             self.skipTest("no epubveri binary; set EPUBVERI_BINARY")
         self._orig = plugin._binary_path
-        plugin._binary_path = _binary
+        plugin._binary_path = lambda: path
 
     def tearDown(self):
         plugin._binary_path = self._orig

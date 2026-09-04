@@ -36,9 +36,13 @@ and neither can break the other.
 On first use it downloads the epubveri binary for your platform (~3 MB) and
 verifies it against the release's `SHA256SUMS.txt` before it is ever run. The
 plugin zip contains no binary. It is kept in
-`<calibre config>/plugins/epubveri/` rather than beside the plugin, because
-**calibre imports a plugin straight out of its zip and never unpacks it** —
-there is no plugin folder to put anything in.
+`<calibre config>/plugins/epubveri-data/` rather than beside the plugin,
+because **calibre imports a plugin straight out of its zip and never unpacks
+it** — there is no plugin folder to put anything in. The `-data` is not
+decoration: Doitsu's calibre plugin keeps *its* copy of the binary in a file
+named `<calibre config>/plugins/epubveri`, so that name is his. A folder left
+there by version 0.2.0 of this plugin is moved to the new one on first use,
+which also gives his plugin its name back.
 
 ## Reading the results
 

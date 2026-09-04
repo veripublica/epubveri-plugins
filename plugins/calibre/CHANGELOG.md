@@ -3,6 +3,74 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
+## [0.2.1] — unreleased
+
+Two things the first day of the dock showed, both reported from thread 374940.
+
+- **The panel no longer comes back on screen at startup.** thiago.eec asked
+  for it to stay hidden the way the EPUBCheck and ACE plugins do (#20) and
+  Doitsu agreed (#21). Those two are dialogs and get it for free; a dock does
+  not — `QMainWindow.restoreState` restores a dock's **visibility** along with
+  its area and size, so a session that ended with the panel open started the
+  next one with it open, over a book nothing had validated and with an empty
+  panel.
+
+  **The position is still remembered**; only the visibility is not. That is
+  why this is a second, deferred close rather than dropping the `objectName`
+  and giving up on `restoreState` — one request is not worth trading for
+  another. calibre queues `restore_state` after `create_actions()`, which is
+  where this dock is built, so the close is queued to land behind it. If a
+  later calibre reorders that, the close simply happens early and the panel is
+  visible again, which is today's behaviour: a wrong guess costs the request,
+  not the plugin. A panel that already has findings in it is never closed
+  underneath the user, whatever the timers do.
+
+- **A name in the way is reported as a name in the way.** PeterT's first run
+  on Linux (#19) said "epubveri could not be downloaded. The first run needs
+  an internet connection" and carried `[Errno 17] File exists` in brackets.
+  His connection was fine — something was already sitting where the validator
+  goes (`<calibre config>/plugins/epubveri`), and the plugin blamed the
+  network for a problem on the disk. He worked it out himself and called it a
+  false alarm; the message was what was wrong.
+
+  `os.path.isdir` is False both for a plain file and for a symlink whose
+  target is gone, and `os.makedirs` raises the same `EEXIST` for either. Both
+  now produce a sentence naming the path and saying to rename or remove it,
+  and nothing is installed or changed. The folder itself is created with
+  `exist_ok=True`, so two editor windows starting together cannot turn the
+  same errno into a second, unrelated version of that message.
+
+- **…and then the thing in the way turned out to be Doitsu's plugin, so we
+  moved.** He was not guessed at: his 0.0.7 was read (it is in calibre's
+  plugin index, `epubveri_plugin_dir()` + `epubveri_binary_name()`), and it
+  keeps its copy of the binary in a **file** called
+  `<calibre config>/plugins/epubveri` — exactly the name this plugin wanted
+  for a folder, on Linux and macOS both. Windows was never affected; his file
+  is `epubveri.exe` there.
+
+  The collision goes both ways: his file stopped our folder being created,
+  and our folder would have stopped his `copy2` — he would have ended up
+  executing a directory. Neither tool can win a name, so ours moves to
+  `plugins/epubveri-data`. **A folder left by 0.2.0 is moved rather than
+  abandoned**, which keeps the binary this plugin already verified and hands
+  the old name back to the plugin that owns it. A *file* at the old name is
+  his and is never touched; a folder that does not contain our binary is
+  somebody's data and is left alone too.
+
+  This is the whole of what PeterT met, and it is not a false alarm: every
+  Linux and macOS user coming from Doitsu's plugin — which is to say most of
+  them — would have hit it.
+
+- **We had also been breaking his plugin, in his own preferences file.**
+  calibre keys preferences by plugin *name* and both plugins are called
+  `epubveri`, so the two share one `plugins/epubveri.json`. Nine of the ten
+  keys are distinct; `last_update_check` is not. His is `time.time()` and he
+  computes `time.time() - last_checked`; ours was an ISO string, so his
+  update check raised `TypeError` for anyone who ran this plugin and then
+  his. It now writes the number he expects, and reads both spellings so no
+  existing install loses its stamp. Our reader was tolerant from the start,
+  which is exactly why this could only ever have shown up on his side.
+
 ## [0.2.0] — 2026-09-04
 
 Minor rather than patch: the dock replaces the whole results interface, which

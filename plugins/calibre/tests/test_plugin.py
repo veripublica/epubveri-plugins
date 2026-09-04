@@ -207,9 +207,128 @@ class DataDirTests(unittest.TestCase):
         from calibre.constants import config_dir
         self.assertEqual(
             os.path.normpath(plugin._data_dir()),
-            os.path.normpath(os.path.join(config_dir, 'plugins', 'epubveri')))
+            os.path.normpath(os.path.join(config_dir, 'plugins',
+                                          'epubveri-data')))
         self.assertNotEqual(os.path.normpath(plugin._data_dir()),
                             os.path.normpath(PLUGIN_DIR))
+
+    def test_it_is_not_the_name_the_other_plugin_already_uses(self):
+        """`<config>/plugins/epubveri` is a **file** in Doitsu's calibre
+        plugin — his binary, `epubveri_plugin_dir()` + `epubveri_binary_name()`
+        in his 0.0.7 — on every platform but Windows. A folder of ours with
+        that name breaks his plugin as surely as his file broke ours."""
+        from calibre.constants import config_dir
+        self.assertNotEqual(
+            os.path.normpath(plugin._data_dir()),
+            os.path.normpath(os.path.join(config_dir, 'plugins', 'epubveri')))
+
+    def test_a_folder_left_by_0_2_0_is_moved_rather_than_abandoned(self):
+        """0.2.0 kept the binary under the shared name. The move gives this
+        plugin the copy it already verified **and** hands the name back to the
+        plugin that owns it, which is the half that is easy to forget: his
+        code cannot run while a directory sits where his file goes."""
+        base = tempfile.mkdtemp(prefix='epubveri-datadir-')
+        try:
+            legacy = os.path.join(base, 'epubveri')
+            new = os.path.join(base, 'epubveri-data')
+            os.makedirs(legacy)
+            binary = os.path.join(legacy, plugin.bin_mod.binary_filename())
+            with open(binary, 'w', encoding='utf-8') as handle:
+                handle.write('pretend this is 2.8 MB of validator')
+
+            self.assertEqual(plugin._prepare_data_dir(new, legacy=legacy), new)
+            self.assertTrue(os.path.isfile(
+                os.path.join(new, plugin.bin_mod.binary_filename())))
+            self.assertFalse(os.path.lexists(legacy),
+                             "the shared name is still taken, so his plugin "
+                             "is still broken")
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+    def test_the_other_plugins_binary_is_never_touched(self):
+        """The migration moves a **folder of ours**. His `epubveri` is a
+        file, and a file at that path is his: it is left exactly where it
+        is, and it does not stop us starting fresh under our own name."""
+        base = tempfile.mkdtemp(prefix='epubveri-datadir-')
+        try:
+            his = os.path.join(base, 'epubveri')
+            new = os.path.join(base, 'epubveri-data')
+            with open(his, 'w', encoding='utf-8') as handle:
+                handle.write('his binary')
+
+            self.assertEqual(plugin._prepare_data_dir(new, legacy=his), new)
+            self.assertTrue(os.path.isdir(new))
+            self.assertTrue(os.path.isfile(his))
+            with open(his, encoding='utf-8') as handle:
+                self.assertEqual(handle.read(), 'his binary')
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+    def test_a_folder_that_is_not_ours_is_left_where_it_is(self):
+        """Only a folder holding our binary is recognised as ours. Anything
+        else at that name is someone's data, and moving it would be a bug
+        with no way back."""
+        base = tempfile.mkdtemp(prefix='epubveri-datadir-')
+        try:
+            legacy = os.path.join(base, 'epubveri')
+            new = os.path.join(base, 'epubveri-data')
+            os.makedirs(legacy)
+            with open(os.path.join(legacy, 'notes.txt'), 'w',
+                      encoding='utf-8') as handle:
+                handle.write('somebody else')
+
+            self.assertEqual(plugin._prepare_data_dir(new, legacy=legacy), new)
+            self.assertTrue(os.path.isfile(os.path.join(legacy, 'notes.txt')))
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+    def test_a_name_in_the_way_is_reported_instead_of_the_network(self):
+        """PeterT's first run on Linux (MobileRead 374940 #19) said the
+        binary "could not be downloaded" and that the first run "needs an
+        internet connection", with `[Errno 17] File exists` in brackets. His
+        connection was fine: something was already sitting at this path.
+
+        Two shapes of that, and `os.path.isdir` is False for both: a plain
+        file, and a symlink whose target is gone. Neither may reach the
+        network sentence.
+        """
+        for make in ('file', 'dead symlink'):
+            base = tempfile.mkdtemp(prefix='epubveri-datadir-')
+            try:
+                path = os.path.join(base, 'epubveri')
+                if make == 'file':
+                    with open(path, 'w', encoding='utf-8') as handle:
+                        handle.write('not a folder')
+                else:
+                    os.symlink(os.path.join(base, 'gone'), path)
+                self.assertFalse(os.path.isdir(path), make)
+
+                with self.assertRaises(plugin.InstallPathError, msg=make):
+                    plugin._prepare_data_dir(path)
+                try:
+                    plugin._prepare_data_dir(path)
+                except plugin.InstallPathError as exc:
+                    said = plugin._install_failure(exc)
+                self.assertIn(path, said, make)
+                self.assertNotIn('internet connection', said, make)
+                # And the thing in the way is still there: this reports, it
+                # does not tidy up after the user.
+                self.assertTrue(os.path.exists(path) or os.path.islink(path))
+            finally:
+                shutil.rmtree(base, ignore_errors=True)
+
+    def test_a_folder_that_is_already_there_is_simply_used(self):
+        """The ordinary case, and the second call is the one that matters:
+        two editor windows opening together must not turn `exist_ok` into a
+        second, unrelated version of the message above."""
+        base = tempfile.mkdtemp(prefix='epubveri-datadir-')
+        try:
+            path = os.path.join(base, 'epubveri')
+            self.assertEqual(plugin._prepare_data_dir(path), path)
+            self.assertEqual(plugin._prepare_data_dir(path), path)
+            self.assertTrue(os.path.isdir(path))
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
 
 
 class PolicyTests(unittest.TestCase):
@@ -234,6 +353,40 @@ class PolicyTests(unittest.TestCase):
         self.assertLess(age, timedelta(hours=1))
         self.assertIsNone(plugin._since('not a date'))
         self.assertIsNone(plugin._since(None))
+
+    def test_the_time_of_a_check_is_written_the_way_his_plugin_reads_it(self):
+        """calibre keys preferences by the plugin **name**, and Doitsu's
+        calibre plugin is also called `epubveri`, so both plugins share one
+        `plugins/epubveri.json`. `last_update_check` is his key first: he
+        writes `time.time()` and computes `time.time() - last_checked`.
+
+        Up to 0.2.0 we wrote an ISO string into it, which made that
+        subtraction raise `TypeError` for anyone who ran ours and then his.
+        Our own reader was tolerant, so the breakage was one-way and it was
+        not ours to notice — which is the argument for writing his spelling
+        rather than defending our own.
+        """
+        import time
+        stamp = plugin._stamp()
+        self.assertIsInstance(stamp, float)
+        # His arithmetic, run against our value.
+        self.assertLess(abs(time.time() - stamp), 60)
+        # And the control: the value 0.2.0 wrote is what broke it.
+        with self.assertRaises(TypeError):
+            time.time() - plugin._now().isoformat()
+
+    def test_both_spellings_of_a_stamp_are_read(self):
+        """The epoch seconds written now, and the ISO strings already sitting
+        in every 0.2.0 install. A format change is not a reason to make every
+        existing install think it has never checked."""
+        from datetime import timedelta
+        recent = plugin._now() - timedelta(minutes=5)
+        for value in (recent.timestamp(), recent.isoformat()):
+            age = plugin._since(value)
+            self.assertIsNotNone(age, value)
+            self.assertLess(age, timedelta(hours=1), value)
+        self.assertIsNone(plugin._since(0))
+        self.assertIsNone(plugin._since(float('nan')))
 
     def test_the_update_note_is_honest_when_a_version_cannot_be_read(self):
         self.assertEqual(plugin._update_note('epubveri 0.13.3',
@@ -666,6 +819,56 @@ class ResultsDockTests(unittest.TestCase):
                          Qt.DockWidgetArea.TopDockWidgetArea,
                          "a nameless dock was matched, so this test proves "
                          "nothing about the named one")
+
+    def test_a_session_that_ended_open_starts_closed(self):
+        """thiago.eec asked for this and Doitsu agreed (MobileRead 374940
+        #20, #21): the panel should not be on screen at startup, the way the
+        EPUBCheck and ACE plugins are not. Those are dialogs and get it for
+        free; `restoreState` restores a dock's **visibility** as well as its
+        position, so ours has to be closed again afterwards.
+
+        Production's ordering is reproduced rather than described:
+        `create_action` runs first and queues our deferred close, calibre
+        queues `restore_state` after it, and only then does an event loop
+        turn. What must survive is the position — dropping that to win this
+        would be trading one request for another.
+        """
+        from qt.core import Qt, QTimer
+        version = 0
+
+        first = stub_tool()
+        first.create_action()
+        first.window.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
+                                   first._dock)
+        first._dock.show()
+        state = bytes(first.window.saveState(version))
+
+        second = stub_tool()
+        second.create_action()
+        # calibre: `QTimer.singleShot(0, self.restore_state)`, at the end of
+        # `Main.__init__` — after `create_actions()`, which is the ordering
+        # the deferred close depends on.
+        QTimer.singleShot(0, lambda: second.window.restoreState(state,
+                                                               version))
+        for _ in range(10):
+            qt_app().processEvents()
+
+        self.assertEqual(second.window.dockWidgetArea(second._dock),
+                         Qt.DockWidgetArea.BottomDockWidgetArea,
+                         "the position stopped being remembered")
+        self.assertFalse(second._dock.isVisibleTo(second.window),
+                         "the panel came back on screen with nothing in it")
+
+    def test_a_panel_with_findings_in_it_is_never_closed_underneath(self):
+        """The control for the test above. The deferred close is timing, and
+        timing is the kind of thing a future calibre can reorder; whatever it
+        does, it may not take away a panel someone is reading."""
+        tool = stub_tool()
+        tool.create_action()
+        tool._show(Envelope([Finding('error')]), None)
+        for _ in range(10):
+            qt_app().processEvents()
+        self.assertTrue(tool._dock.isVisibleTo(tool.window))
 
     def test_validating_twice_reuses_the_one_dock(self):
         """The dialog this replaces had to close its predecessor by hand, or
