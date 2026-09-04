@@ -103,6 +103,11 @@ class Envelope:
     the plugins validate one book at a time."""
 
     def __init__(self, doc):
+        #: The envelope exactly as epubveri produced it. Kept because a host
+        #: may need to hand the whole report to someone else — the calibre
+        #: plugin exports it, and a report pasted into a forum thread is how
+        #: three of this project's defects were found. Nothing here reads it.
+        self.doc = doc
         self.tool_version = doc.get("tool_version", "")
         # Envelope-level status. Per-input status is the one to act on.
         self.status = doc.get("status", "")

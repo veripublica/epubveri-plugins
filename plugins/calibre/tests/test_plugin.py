@@ -151,11 +151,29 @@ def Qt_sort_order_ascending():
 
 
 def qt_app():
-    """One QApplication for the whole run; Qt allows no more."""
+    """One QApplication for the whole run; Qt allows no more.
+
+    **Under Fusion rather than calibre's own style, and that is load-bearing
+    rather than tidy.** With `CalibreStyle` active this process dies with
+    SIGBUS inside `CalibreStyle::standardIcon`, which asks the application
+    object for an icon through `QMetaObject::invokeMethod` — a round trip that
+    wants more of a running calibre than `Application([])` is in a test. It
+    showed up first on a preferences page containing a `QComboBox` and then,
+    intermittently, wherever enough widgets had been built and dropped; a
+    suite that crashes on the third widget teaches you to write fewer tests.
+
+    calibre's own preference pages are full of combo boxes, so this is the
+    harness and not the plugin. What it costs is real and worth stating: these
+    tests exercise behaviour, never calibre's painting, so anything that would
+    only go wrong under calibre's own style is invisible here and has to be
+    met by running the plugin in calibre — which is where every defect this
+    plugin has had was found anyway.
+    """
     global _app
     if _app is None:
         from calibre.gui2 import Application
         _app = Application([])
+        _app.setStyle('Fusion')
     return _app
 
 
@@ -842,6 +860,119 @@ class ResultsPanelTests(unittest.TestCase):
         self.assertIsNone(panel.go_to(item))
 
 
+class CopyAndExportTests(unittest.TestCase):
+    """Doitsu asked for selection, copying and export together (MobileRead
+    374940 #21), and they are one feature: a panel you cannot get text out of
+    makes people retype findings or photograph them. DNSB's two output files
+    are the reason this matters — a pasted report has found more defects here
+    than any instrument in the repository."""
+
+    def _panel(self, findings=None, envelope=None):
+        tool = stub_tool()
+        panel = plugin.ResultsPanel(tool)
+        if envelope is None:
+            envelope = Envelope(findings or [])
+        panel.show_results(findings if findings is not None
+                           else envelope.findings, 'summary', envelope)
+        return panel
+
+    def test_rows_can_be_ctrl_clicked_rather_than_one_at_a_time(self):
+        panel = self._panel([Finding('error'), Finding('warning'),
+                             Finding('usage')])
+        self.assertEqual(
+            panel.items.selectionMode(),
+            QtSelectionMode().ExtendedSelection,
+            'Ctrl+click and Shift+click need an extended selection')
+
+    def test_copying_takes_the_selection_in_the_order_on_screen(self):
+        panel = self._panel([Finding('usage', code='CSS-028'),
+                             Finding('error', code='RSC-005'),
+                             Finding('warning', code='OPF-053')])
+        # Severest first, so the rows are ERROR, WARNING, USAGE.
+        panel.items.topLevelItem(0).setSelected(True)
+        panel.items.topLevelItem(2).setSelected(True)
+        rows = panel.rows(selected_only=True)
+        self.assertEqual([row[0] for row in rows], ['ERROR', 'USAGE'])
+        self.assertEqual(len(rows[0]), panel.items.columnCount())
+        # And everything, for the menu entry beside it.
+        self.assertEqual([row[0] for row in panel.rows(selected_only=False)],
+                         ['ERROR', 'WARNING', 'USAGE'])
+
+    def test_the_clipboard_gets_tab_separated_lines(self):
+        """Tabs because the two things people do with this are paste it into
+        a forum post and paste it into a spreadsheet."""
+        panel = self._panel([Finding('error', code='RSC-005'),
+                             Finding('usage', code='CSS-028')])
+        panel.items.selectAll()
+        panel.copy_selection()
+        from qt.core import QApplication
+        text = QApplication.clipboard().text()
+        lines = text.splitlines()
+        self.assertEqual(len(lines), 2, text)
+        self.assertTrue(lines[0].startswith('ERROR\t'), text)
+        self.assertEqual(len(lines[0].split('\t')),
+                         panel.items.columnCount(), text)
+
+    def test_nothing_selected_copies_nothing_rather_than_everything(self):
+        panel = self._panel([Finding('error')])
+        from qt.core import QApplication
+        QApplication.clipboard().setText('untouched')
+        panel.copy_selection()
+        self.assertEqual(QApplication.clipboard().text(), 'untouched')
+
+    def test_the_csv_quotes_a_message_that_contains_both(self):
+        """epubveri's messages carry commas and double quotes in the same
+        sentence — it quotes element and attribute names the way epubcheck
+        does. A handmade writer gets one of the two wrong."""
+        panel = self._panel([Finding(
+            'error', code='RSC-005',
+            message='attribute "class" not allowed here, expected "id"')])
+        text = panel.csv_text(panel.rows(selected_only=False))
+        lines = text.splitlines()
+        self.assertEqual(lines[0], 'Severity,File,Line,Message')
+        self.assertIn('""class""', lines[1])
+        import csv as csv_module
+        parsed = list(csv_module.reader(io_module().StringIO(text)))
+        self.assertEqual(len(parsed), 2)
+        self.assertIn('attribute "class" not allowed here, expected "id"',
+                      parsed[1][3])
+
+    def test_the_json_export_is_the_whole_report_not_the_visible_rows(self):
+        """The two exports answer different questions. The CSV is the table
+        you are looking at; the JSON is the report, filtered by nothing — the
+        file to attach when something looks wrong. A user who has switched
+        usage notes off must not send a report with the usage notes missing.
+        """
+        doc = {'tool_version': '0.13.3',
+               'inputs': [{'items': [
+                   {'code': 'RSC-005', 'severity': 'error', 'message': 'a'},
+                   {'code': 'CSS-028', 'severity': 'usage', 'message': 'b'},
+                   {'code': 'ADV-010', 'severity': 'usage', 'message': 'c'}]}]}
+        envelope = Envelope([Finding('error', code='RSC-005')], doc=doc)
+        panel = self._panel([Finding('error', code='RSC-005')], envelope)
+        self.assertEqual(panel.items.topLevelItemCount(), 1)
+        text = panel.json_text()
+        for code in ('RSC-005', 'CSS-028', 'ADV-010'):
+            self.assertIn(code, text)
+        self.assertEqual(json.loads(text), doc)
+
+    def test_a_panel_that_has_never_run_exports_no_json(self):
+        tool = stub_tool()
+        panel = plugin.ResultsPanel(tool)
+        self.assertIsNone(panel.envelope)
+        self.assertIsNone(panel.save_json())
+
+
+def QtSelectionMode():
+    from qt.core import QAbstractItemView
+    return QAbstractItemView.SelectionMode
+
+
+def io_module():
+    import io
+    return io
+
+
 class ResultsDockTests(unittest.TestCase):
     """Doitsu asked for a dock rather than a window (MobileRead 374940 #16);
     JSWolf said that was more than a nitpick (#17)."""
@@ -1067,9 +1198,15 @@ class ResultsDockTests(unittest.TestCase):
 
 
 class Envelope(object):
-    """Enough of an envelope for the summary line."""
+    """Enough of an envelope for the summary line and the JSON export."""
 
-    def __init__(self, findings, version='0.13.3'):
+    def __init__(self, findings, version='0.13.3', doc=None):
+        self.doc = doc if doc is not None else {
+            'tool_version': version,
+            'inputs': [{'items': [{'code': f.code, 'severity': f.severity,
+                                   'message': f.message}
+                                  for f in findings]}],
+        }
         self.findings = findings
         self.version = version
         self.could_not_read = False
@@ -1149,19 +1286,11 @@ class SummaryTests(unittest.TestCase):
 
 
 class ConfigWidgetTests(unittest.TestCase):
-    """**These build the page under Fusion rather than calibre's own style,
-    and the reason is a real crash.** With `CalibreStyle` active, building a
-    page containing a `QComboBox` here dies with SIGBUS inside
-    `CalibreStyle::standardIcon`, which asks the application object for an
-    icon through `QMetaObject::invokeMethod` — a round trip that wants more
-    of a calibre than `Application([])` is in a test process. calibre's own
-    preference pages are full of combo boxes, so this is the harness and not
-    the widget; the page is still worth building under a plain style, because
-    what these tests are about is which settings it shows and saves.
-    """
+    """The page this plugin has that Sigil has nowhere to put.
 
-    def setUp(self):
-        qt_app().setStyle('Fusion')
+    Built under Fusion like everything else here — see `qt_app`, where the
+    combo box on this page is what first made the crash reproducible.
+    """
 
     def test_the_three_switches_show_and_save(self):
         saved = {k: plugin.prefs[k]

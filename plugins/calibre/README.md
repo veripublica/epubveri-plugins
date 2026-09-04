@@ -51,6 +51,13 @@ Drag it where you want it, tab it behind another panel, or close it — calibre
 remembers where you put it, and a validation brings it back. It stays hidden
 until you run one.
 
+Select rows with Ctrl+click and Shift+click, and **Ctrl+C** copies them as
+tab-separated lines — ready to paste into a forum post or a spreadsheet.
+Right-click the table for the rest: copy everything, select all, *Save the
+table as CSV* (what you are looking at, your settings and sort order), and
+*Save epubveri's full report as JSON* (the whole envelope, filtered by
+nothing — the file to attach when something looks wrong).
+
 Findings arrive **severest first**, and each severity group still reads
 top-to-bottom in book order. Click any column header to reorder — Severity,
 File, Line or Message — and click it again to reverse. Severity sorts by rank

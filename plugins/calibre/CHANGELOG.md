@@ -27,6 +27,34 @@ first day the dock existed.
   not the plugin. A panel that already has findings in it is never closed
   underneath the user, whatever the timers do.
 
+- **Rows can be selected, copied and exported.** Doitsu asked for the three
+  together (#21) and they are one feature: a panel you cannot get text out of
+  makes people retype findings or photograph them. Ctrl+click and Shift+click
+  select; **Ctrl+C** copies the selection as tab-separated lines, in the order
+  on screen, because the two things people do with this are paste it into a
+  forum post and paste it into a spreadsheet. Right-click for the rest: copy
+  everything, select all, and the two exports.
+
+  The clipboard write is retried with a read-back, which is not defensive
+  coding for its own sake — Doitsu's plugin documents the reason and it is a
+  fact about Windows rather than about Qt: `SetClipboardData` fails outright
+  while another process has the clipboard open, nothing retries, and the copy
+  silently does nothing.
+
+  **The two exports answer different questions, on purpose.** *Save the table
+  as CSV* writes what you are looking at — your display settings, your sort
+  order — through Python's `csv` writer, because epubveri's messages carry a
+  comma and a double quote in the same sentence and a handmade writer gets one
+  of them wrong. *Save epubveri's full report as JSON* writes the envelope
+  whole, filtered by nothing, in the format the other veripublica tools read.
+  That is the file to attach when something looks wrong, and someone who has
+  switched usage notes off must not send a report with the usage notes
+  missing.
+
+  Ctrl+C and Ctrl+A are bound to the table rather than to the window: the
+  editor has its own Ctrl+C, and a shortcut that reaches past the widget it
+  belongs to takes it away from the text being edited.
+
 - **Sortable columns, opening severest first.** thiago.eec asked for
   sortable columns "particularly by severity" (#20); Doitsu agreed (#21).
   Click any header to reorder, click again to reverse — and the first column

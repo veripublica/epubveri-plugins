@@ -31,6 +31,9 @@ Sigil takes an absolute document position, which is where its off-by-one came
 from.
 """
 
+import csv
+import io
+import json
 import os
 import tempfile
 import shutil
@@ -40,9 +43,10 @@ from calibre.constants import config_dir
 from calibre.gui2 import error_dialog
 from calibre.gui2.tweak_book.plugin import Tool
 from calibre.utils.config import JSONConfig
-from qt.core import (QAbstractItemView, QBrush, QCheckBox, QColor,
-                     QComboBox, QDockWidget, QLabel, QPalette, QTimer,
-                     QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, Qt)
+from qt.core import (QAbstractItemView, QAction, QApplication, QBrush,
+                     QCheckBox, QColor, QComboBox, QDockWidget, QKeySequence,
+                     QLabel, QMenu, QPalette, QTimer, QTreeWidget,
+                     QTreeWidgetItem, QVBoxLayout, QWidget, Qt)
 
 # The plugin's own package, never a bare `from client import ...` with the
 # plugin folder pushed onto sys.path: `client` is a name any other plugin
@@ -587,6 +591,8 @@ class ResultsPanel(QWidget):
     #: The `sort` setting is applied to the first run of a session and to no
     #: later one, so that a header click is not undone by validating again.
     _sorted_once = False
+    #: The last run's whole report, for the JSON export. None until a run.
+    envelope = None
 
     def __init__(self, tool, parent=None):
         QWidget.__init__(self, parent)
@@ -611,15 +617,39 @@ class ResultsPanel(QWidget):
         self.items.header().setSectionsClickable(True)
         self.items.header().sectionClicked.connect(self.sort_by)
         self.items.setRootIsDecorated(False)
+        # Ctrl+click and Shift+click, so a run can be quoted somewhere else.
+        # Doitsu asked for the selection, the copy and the export together
+        # (MobileRead 374940 #21) and they are one feature: a panel you cannot
+        # get text out of makes people retype findings, or screenshot them.
         self.items.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection)
+            QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.items.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        self.items.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.items.customContextMenuRequested.connect(self.show_menu)
+        # Bound to the table rather than to the window: calibre's editor has
+        # its own Ctrl+C, and a shortcut that reaches further than the widget
+        # it belongs to takes it away from the text the user is editing.
+        self.copy_action = QAction('Copy', self.items)
+        self.copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        self.copy_action.setShortcutContext(
+            Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.copy_action.triggered.connect(self.copy_selection)
+        self.items.addAction(self.copy_action)
+        self.select_all_action = QAction('Select all', self.items)
+        self.select_all_action.setShortcut(QKeySequence.StandardKey.SelectAll)
+        self.select_all_action.setShortcutContext(
+            Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.select_all_action.triggered.connect(self.items.selectAll)
+        self.items.addAction(self.select_all_action)
         self.items.setEditTriggers(
             QAbstractItemView.EditTrigger.NoEditTriggers)
         self.items.itemActivated.connect(self.go_to)
         self.items.itemDoubleClicked.connect(self.go_to)
         layout.addWidget(self.items)
 
-    def show_results(self, findings, summary):
+    def show_results(self, findings, summary, envelope=None):
         """Replace what is displayed. One panel, reused.
 
         The dialog this replaces was created afresh each run and the old one
@@ -628,6 +658,9 @@ class ResultsPanel(QWidget):
         a single object, so the same guarantee comes from clearing it.
         """
         self.summary.setText(summary)
+        # Kept for the JSON export, which hands over the whole report rather
+        # than the rows that survived the display settings.
+        self.envelope = envelope
         # Whatever the user last clicked survives the next validation, and
         # nothing of it survives a restart: an order chosen for one book is a
         # passing thought, not a setting. Filling happens with sorting off,
@@ -684,6 +717,121 @@ class ResultsPanel(QWidget):
         # Anything unrecognised opens the way the default does. A typo in a
         # settings file should not produce an order nobody chose.
         return True, COL_SEVERITY, Qt.SortOrder.AscendingOrder
+
+    def rows(self, selected_only):
+        """The rows on screen, in the order they are on screen."""
+        wanted = []
+        for index in range(self.items.topLevelItemCount()):
+            item = self.items.topLevelItem(index)
+            if selected_only and not item.isSelected():
+                continue
+            wanted.append([item.text(column)
+                           for column in range(self.items.columnCount())])
+        return wanted
+
+    def show_menu(self, point):
+        menu = QMenu(self.items)
+        selected = bool(self.items.selectedItems())
+        act = menu.addAction('Copy', self.copy_selection)
+        act.setEnabled(selected)
+        act.setShortcut(QKeySequence.StandardKey.Copy)
+        menu.addAction('Copy everything', self.copy_everything)
+        menu.addAction('Select all', self.items.selectAll)
+        menu.addSeparator()
+        menu.addAction('Save the table as CSV…', self.save_csv)
+        act = menu.addAction("Save epubveri's full report as JSON…",
+                             self.save_json)
+        act.setEnabled(self.envelope is not None)
+        menu.exec(self.items.viewport().mapToGlobal(point))
+
+    def copy_selection(self):
+        self._to_clipboard(self.rows(selected_only=True))
+
+    def copy_everything(self):
+        self._to_clipboard(self.rows(selected_only=False))
+
+    def _to_clipboard(self, rows):
+        """Tab-separated, one row per line, in display order.
+
+        Tabs because the two things people do with this are paste it into a
+        forum post and paste it into a spreadsheet, and tabs survive both.
+
+        **The retry is not defensive coding for its own sake.** Doitsu's
+        plugin documents the reason and it is a fact about the platform
+        rather than about Qt: on Windows `SetClipboardData` fails outright if
+        another process — a clipboard manager, an RDP client — has the
+        clipboard open at that instant, and nothing retries, so the copy
+        silently does nothing and the user learns to press Ctrl+C twice.
+        """
+        if not rows:
+            return
+        text = '\n'.join('\t'.join(row) for row in rows)
+        clipboard = QApplication.clipboard()
+        for _attempt in range(5):
+            clipboard.setText(text)
+            QApplication.processEvents()
+            if clipboard.text() == text:
+                return
+
+    def csv_text(self, rows):
+        """`rows` as CSV, with the header the table shows.
+
+        `csv` rather than commas and quotes by hand: a message like
+        `attribute "class" not allowed here, expected …` carries both a comma
+        and a double quote, and a handmade writer gets one of them wrong.
+        """
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow([self.items.headerItem().text(column)
+                         for column in range(self.items.columnCount())])
+        writer.writerows(rows)
+        return buffer.getvalue()
+
+    def save_csv(self):
+        """The table, as it is on screen: the display settings and the sort
+        order are the user's, and an export that quietly disagreed with what
+        they are looking at would be worse than no export."""
+        rows = self.rows(selected_only=bool(self.items.selectedItems()))
+        if not rows:
+            return
+        path = self._ask_where('epubveri-results.csv', 'CSV', 'csv')
+        if path:
+            self._write(path, self.csv_text(rows))
+
+    def save_json(self):
+        """epubveri's own envelope, whole — not the rows on screen.
+
+        The two exports answer different questions on purpose. The CSV is the
+        table you are looking at; the JSON is the report, filtered by nothing,
+        in the shared format the other veripublica tools read. It is the file
+        to attach when something looks wrong: DNSB's two output files did more
+        for this project in one post than any instrument here.
+        """
+        if self.envelope is None:
+            return
+        path = self._ask_where('epubveri-report.json', 'JSON', 'json')
+        if path:
+            self._write(path, self.json_text())
+
+    def json_text(self):
+        return json.dumps(self.envelope.doc, indent=2,
+                          ensure_ascii=False) + '\n'
+
+    def _ask_where(self, filename, label, extension):
+        from calibre.gui2 import choose_save_file
+        return choose_save_file(
+            self, 'epubveri-export-%s' % extension,
+            'Save the epubveri results',
+            filters=[('%s files' % label, [extension])],
+            initial_filename=filename)
+
+    def _write(self, path, text):
+        try:
+            with open(path, 'w', encoding='utf-8', newline='') as handle:
+                handle.write(text)
+        except OSError as exc:
+            error_dialog(self, 'epubveri',
+                         'The file could not be written: %s' % exc, show=True)
 
     def sort_by(self, column):
         """The first header click, when the panel opened in document order.
@@ -1012,6 +1160,6 @@ class EpubVeriTool(Tool):
         # windows, two of them describing a book that had since been edited.
         dock = self._ensure_dock()
         self._validated = True
-        self._panel.show_results(shown, summary)
+        self._panel.show_results(shown, summary, envelope)
         dock.show()
         dock.raise_()
