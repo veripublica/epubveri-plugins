@@ -27,6 +27,40 @@ first day the dock existed.
   not the plugin. A panel that already has findings in it is never closed
   underneath the user, whatever the timers do.
 
+- **The settings are reachable from inside the editor.** thiago.eec asked
+  for that (#20) and Doitsu suggested where (#21): the toolbar button now has
+  a dropdown. Clicking the button still validates — `toolbar_button_popup_mode
+  = 'button'` is calibre's `MenuButtonPopup`, so the click keeps the meaning
+  it had — and the arrow opens *Validate now*, *Show the results panel* and
+  *epubveri settings…*. The results panel's right-click menu has the settings
+  entry too, which is the other moment you want them: you are looking at the
+  rows a setting decides.
+
+  It is **the same page** calibre builds under Preferences → Plugins →
+  Customize, in a dialog of our own — one page, two doors, so the two can
+  never drift into offering different things.
+
+  **Changing a setting re-lists the run already in hand**, without validating
+  again: the switches decide what is *listed* and the whole report is already
+  here. Someone who turns usage notes on and sees nothing change would
+  reasonably conclude the setting does not work. The sort setting applies
+  immediately too, this once — it is otherwise applied only when a session's
+  first results arrive, so that a header click is not undone by validating
+  again, but a person who has just chosen an order in the dialog means now.
+
+  *Show the results panel* exists because the dock is hidden at startup and
+  closable: without it, a user who has closed the panel has no way back to the
+  last run's findings except by validating a book that has not changed.
+
+- **Fixed before it shipped: the column you sorted by was not the one that
+  came back.** The loop that tints each row reused the name holding the sort
+  column, so after a re-validation the table sorted by whichever column
+  happened to be last — Message. It looked plausible, because it *was*
+  sorted; it simply was not sorted by what the user had clicked. Found while
+  proving another test could fail, which is the argument for that habit: the
+  bug was in the same commit as the feature and no green suite would have
+  shown it.
+
 - **Rows can be selected, copied and exported.** Doitsu asked for the three
   together (#21) and they are one feature: a panel you cannot get text out of
   makes people retype findings or photograph them. Ctrl+click and Shift+click

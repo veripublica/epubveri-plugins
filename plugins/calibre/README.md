@@ -51,6 +51,13 @@ Drag it where you want it, tab it behind another panel, or close it — calibre
 remembers where you put it, and a validation brings it back. It stays hidden
 until you run one.
 
+The toolbar button validates when you click it; its arrow opens *Validate
+now*, *Show the results panel* and *epubveri settings…*, so the settings are
+one click from the book rather than four from Preferences. The results panel's
+right-click menu has them too. It is the same page as *Preferences → Plugins →
+epubveri → Customize*, and changing anything there re-lists the run you
+already have rather than making you validate again.
+
 Select rows with Ctrl+click and Shift+click, and **Ctrl+C** copies them as
 tab-separated lines — ready to paste into a forum post or a spreadsheet.
 Right-click the table for the rest: copy everything, select all, *Save the

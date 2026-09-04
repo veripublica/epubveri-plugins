@@ -646,7 +646,28 @@ class ActionTests(unittest.TestCase):
             plugin.EpubVeriTool.name + '_'))
 
 
-class ResultsPanelTests(unittest.TestCase):
+class PinnedPrefs(object):
+    """The plugin reads the real `plugins/epubveri.json` — the developer's
+    own settings. A test that leaves them alone passes or fails by what is
+    in that file, which is how a panel test came to depend on a `sort` value
+    a debugging session had left behind. These pin what they need and put it
+    back.
+    """
+
+    KEYS = ('sort', 'show_usage', 'show_advisory')
+    VALUES = {'sort': 'severity', 'show_usage': True, 'show_advisory': True}
+
+    def setUp(self):
+        self._saved = {key: plugin.prefs[key] for key in self.KEYS}
+        for key, value in self.VALUES.items():
+            plugin.prefs[key] = value
+
+    def tearDown(self):
+        for key, value in self._saved.items():
+            plugin.prefs[key] = value
+
+
+class ResultsPanelTests(PinnedPrefs, unittest.TestCase):
     """The view has never been built by anything but a person clicking."""
 
     def _panel(self, findings, summary='summary', base=None):
@@ -720,12 +741,8 @@ class ResultsPanelTests(unittest.TestCase):
                 for i in range(panel.items.topLevelItemCount())]
 
     def _sorted_panel(self, findings, order='severity'):
-        saved = plugin.prefs['sort']
-        try:
-            plugin.prefs['sort'] = order
-            return self._panel(findings)
-        finally:
-            plugin.prefs['sort'] = saved
+        plugin.prefs['sort'] = order          # restored by tearDown
+        return self._panel(findings)
 
     def test_the_panel_opens_severest_first(self):
         """The words sort alphabetically as ERROR < FATAL < INFO < USAGE <
@@ -802,6 +819,27 @@ class ResultsPanelTests(unittest.TestCase):
         panel.show_results([Finding('fatal'), Finding('usage')], 'again')
         self.assertEqual(self._labels(panel), ['USAGE', 'FATAL'])
 
+    def test_the_column_a_user_chose_is_the_one_re_applied(self):
+        """The regression test for a real defect, found while proving another
+        test bit: the loop that tints each column reused the name holding the
+        **sort column**, so every refill sorted by whatever column happened to
+        be last. The order looked plausible — it was sorted, by Message — and
+        the panel silently stopped honouring the header the user had clicked.
+        """
+        panel = self._sorted_panel([Finding('error', line=100),
+                                    Finding('error', line=9),
+                                    Finding('usage', line=10)])
+        panel.items.sortItems(plugin.COL_LINE, Qt_sort_order_ascending())
+        self.assertEqual([panel.items.topLevelItem(i).text(2)
+                          for i in range(3)], ['9', '10', '100'])
+
+        panel.show_results([Finding('error', line=100),
+                            Finding('error', line=9),
+                            Finding('usage', line=10)], 'again')
+        self.assertEqual([panel.items.topLevelItem(i).text(2)
+                          for i in range(3)], ['9', '10', '100'],
+                         'the panel went back to sorting by another column')
+
     def test_a_severity_we_do_not_know_sorts_last_not_among_the_errors(self):
         panel = self._sorted_panel([Finding('mystery'), Finding('usage'),
                                     Finding('error')])
@@ -860,7 +898,97 @@ class ResultsPanelTests(unittest.TestCase):
         self.assertIsNone(panel.go_to(item))
 
 
-class CopyAndExportTests(unittest.TestCase):
+class SettingsDoorTests(PinnedPrefs, unittest.TestCase):
+    """thiago.eec asked for the settings to be reachable inside the editor
+    rather than only behind calibre's Preferences (MobileRead 374940 #20);
+    Doitsu suggested the toolbar dropdown (#21). calibre's own `Tool` API
+    documents both halves — a menu on the action, and
+    `toolbar_button_popup_mode`."""
+
+    def test_the_toolbar_button_keeps_its_click_and_gains_an_arrow(self):
+        """`button` is `MenuButtonPopup`: the click still validates and the
+        arrow opens the menu. `instant` would have taken the click away."""
+        tool = stub_tool()
+        self.assertEqual(tool.toolbar_button_popup_mode, 'button')
+        action = tool.create_action(for_toolbar=True)
+        self.assertIsNotNone(action.menu())
+        entries = [a.text() for a in action.menu().actions() if a.text()]
+        self.assertEqual(entries, ['Validate now', 'Show the results panel',
+                                   'epubveri settings…'])
+
+    def test_the_menu_entry_has_no_submenu_and_takes_the_shortcut(self):
+        """calibre's own example is explicit that the shortcut goes on one of
+        the two actions and not both."""
+        tool = stub_tool()
+        action = tool.create_action(for_toolbar=False)
+        self.assertIsNone(action.menu())
+        # calibre prefixes what a plugin passes; what matters here is that
+        # exactly one registration happened, and for the menu action.
+        self.assertEqual(len(tool.window.keyboard.registered), 1)
+        self.assertIn('epubveri-validate', tool.window.keyboard.registered[0])
+
+    def test_the_panel_can_be_brought_back_without_validating_again(self):
+        """The dock is hidden at startup and closable, so a user who has
+        closed it would otherwise have to re-run the validator over a book
+        that has not changed to see the last findings."""
+        tool = stub_tool()
+        tool._show(Envelope([Finding('error')]), None)
+        tool._dock.close()
+        self.assertFalse(tool._dock.isVisibleTo(tool.window))
+        tool.show_panel()
+        self.assertTrue(tool._dock.isVisibleTo(tool.window))
+
+    def test_changing_a_switch_re_lists_the_run_already_in_hand(self):
+        """No second validation: the switches decide what is listed and the
+        whole report is already here. A user who turns usage notes off and
+        sees nothing change would reasonably conclude the setting is broken.
+        """
+        saved = plugin.prefs['show_usage']
+        try:
+            plugin.prefs['show_usage'] = True
+            tool = stub_tool()
+            tool._show(Envelope([Finding('error'), Finding('usage')]), None)
+            self.assertEqual(tool._panel.items.topLevelItemCount(), 2)
+
+            plugin.prefs['show_usage'] = False
+            tool.settings_changed()
+            self.assertEqual(tool._panel.items.topLevelItemCount(), 1)
+            self.assertIn('are not listed because of the display settings',
+                          tool._panel.summary.text())
+            # And it names the nearer of the two doors first, now that there
+            # is one inside the editor.
+            self.assertIn('toolbar button', tool._panel.summary.text())
+        finally:
+            plugin.prefs['show_usage'] = saved
+
+    def test_choosing_an_order_in_the_dialog_means_now(self):
+        """The `sort` setting is otherwise applied once per session, so that a
+        header click is not undone by validating again. Someone who has just
+        chosen an order in the dialog means this run."""
+        saved = plugin.prefs['sort']
+        try:
+            plugin.prefs['sort'] = 'severity'
+            tool = stub_tool()
+            tool._show(Envelope([Finding('usage'), Finding('error')]), None)
+            self.assertEqual(
+                [tool._panel.items.topLevelItem(i).text(0) for i in range(2)],
+                ['ERROR', 'USAGE'])
+
+            plugin.prefs['sort'] = 'document'
+            tool.settings_changed()
+            self.assertEqual(
+                [tool._panel.items.topLevelItem(i).text(0) for i in range(2)],
+                ['USAGE', 'ERROR'])
+        finally:
+            plugin.prefs['sort'] = saved
+
+    def test_nothing_validated_yet_means_nothing_to_re_list(self):
+        tool = stub_tool()
+        tool.create_action()
+        self.assertIsNone(tool.settings_changed())
+
+
+class CopyAndExportTests(PinnedPrefs, unittest.TestCase):
     """Doitsu asked for selection, copying and export together (MobileRead
     374940 #21), and they are one feature: a panel you cannot get text out of
     makes people retype findings or photograph them. DNSB's two output files
@@ -973,7 +1101,7 @@ def io_module():
     return io
 
 
-class ResultsDockTests(unittest.TestCase):
+class ResultsDockTests(PinnedPrefs, unittest.TestCase):
     """Doitsu asked for a dock rather than a window (MobileRead 374940 #16);
     JSWolf said that was more than a nitpick (#17)."""
 

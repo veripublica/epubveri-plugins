@@ -44,9 +44,10 @@ from calibre.gui2 import error_dialog
 from calibre.gui2.tweak_book.plugin import Tool
 from calibre.utils.config import JSONConfig
 from qt.core import (QAbstractItemView, QAction, QApplication, QBrush,
-                     QCheckBox, QColor, QComboBox, QDockWidget, QKeySequence,
-                     QLabel, QMenu, QPalette, QTimer, QTreeWidget,
-                     QTreeWidgetItem, QVBoxLayout, QWidget, Qt)
+                     QCheckBox, QColor, QComboBox, QDialog, QDialogButtonBox,
+                     QDockWidget, QKeySequence, QLabel, QMenu, QPalette,
+                     QTimer, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
+                     QWidget, Qt)
 
 # The plugin's own package, never a bare `from client import ...` with the
 # plugin folder pushed onto sys.path: `client` is a name any other plugin
@@ -670,11 +671,16 @@ class ResultsPanel(QWidget):
         direction = self.items.header().sortIndicatorOrder()
         self.items.setSortingEnabled(False)
         self.items.clear()
+        if not self._sorted_once:
+            self._sorted_once = True
+            sorting, column, direction = self._opening_order()
         # Asked once per run, not once per row, and asked again on every run
         # so that changing the theme with the editor open is picked up.
         dark = _is_dark(self)
+        rows = []
         for position, finding in enumerate(findings):
-            item = ResultRow(self.items, position, finding.line)
+            item = ResultRow(None, position, finding.line)
+            rows.append(item)
             item.setText(0, _label(finding))
             item.setText(1, finding.location or '')
             item.setText(2, str(finding.line) if finding.line else '')
@@ -690,16 +696,22 @@ class ResultsPanel(QWidget):
             colour = _tint(_label(finding), dark)
             if colour is not None:
                 brush = QBrush(colour)
-                for column in range(self.items.columnCount()):
-                    item.setBackground(column, brush)
-        if not self._sorted_once:
-            self._sorted_once = True
-            sorting, column, direction = self._opening_order()
+                for tinted in range(self.items.columnCount()):
+                    item.setBackground(tinted, brush)
+        # **The rows are built detached and added in one go**, because
+        # sorting cannot happen as they are inserted: an item's sort keys are
+        # its text, and the text is set after the item exists.
+        self.items.addTopLevelItems(rows)
         if sorting:
+            # Qt sorts on the transition to enabled — sorting was switched
+            # off above — using the indicator set here. **Not enabled in
+            # document order**: that same transition would sort it, and Qt
+            # has no way back. The first header click enables it instead,
+            # through `sort_by`.
+            self.items.header().setSortIndicator(column, direction)
             self.items.setSortingEnabled(True)
-            self.items.sortItems(column, direction)
-        for column in range(3):
-            self.items.resizeColumnToContents(column)
+        for width in range(3):
+            self.items.resizeColumnToContents(width)
 
     def _opening_order(self):
         """How the panel opens, from the `sort` setting.
@@ -742,6 +754,12 @@ class ResultsPanel(QWidget):
         act = menu.addAction("Save epubveri's full report as JSON…",
                              self.save_json)
         act.setEnabled(self.envelope is not None)
+        menu.addSeparator()
+        # thiago.eec asked for the settings to be reachable from inside the
+        # editor rather than only from calibre's Preferences (374940 #20).
+        # This is the second of the two places: you are looking at the rows
+        # a setting decides when you want to change it.
+        menu.addAction('epubveri settings…', self.tool.show_settings)
         menu.exec(self.items.viewport().mapToGlobal(point))
 
     def copy_selection(self):
@@ -1053,15 +1071,87 @@ class EpubVeriTool(Tool):
         get = globals().get('get_icons')
         return get('plugin.png') if get is not None else QIcon()
 
+    #: A toolbar button that validates when clicked and opens a menu from
+    #: its arrow. calibre's own `Tool` documents the three values; `button`
+    #: is `MenuButtonPopup`, which is the one that keeps the click meaning
+    #: what it meant before the menu existed.
+    toolbar_button_popup_mode = 'button'
+
     def create_action(self, for_toolbar=True):
         from qt.core import QAction
         self._ensure_dock()
         action = QAction(self._action_icon(), 'Validate with epubveri',
                          self.gui)
         action.triggered.connect(self.validate)
-        if not for_toolbar:
+        if for_toolbar:
+            # Doitsu suggested the dropdown (MobileRead 374940 #21) and
+            # calibre's own plugin API documents it in `create_action`'s
+            # docstring, menu and popup mode together. The menu is held on
+            # `self` because `QAction.setMenu` does not own it.
+            self._menu = QMenu(self.gui)
+            self._menu.addAction('Validate now', self.validate)
+            self._menu.addAction('Show the results panel', self.show_panel)
+            self._menu.addSeparator()
+            self._menu.addAction('epubveri settings…', self.show_settings)
+            action.setMenu(self._menu)
+        else:
+            # calibre's own example is explicit that the shortcut goes on one
+            # of the two actions and not both.
             self.register_shortcut(action, 'epubveri-validate')
         return action
+
+    def show_panel(self):
+        """Bring the results back without validating again.
+
+        The dock is hidden at startup and closable, so a user who has closed
+        it has no way back to the last run's findings except by re-running
+        the validator over a book that has not changed.
+        """
+        dock = self._ensure_dock()
+        dock.show()
+        dock.raise_()
+
+    def show_settings(self):
+        """The settings, from inside the editor.
+
+        thiago.eec asked for this (374940 #20): calibre keeps a plugin's
+        settings behind Preferences → Plugins → epubveri → Customize, which is
+        four steps away from the book you are editing. The page is the same
+        object calibre builds there — one page, two doors — so the two can
+        never drift into saying different things.
+        """
+        dialog = QDialog(self.gui)
+        dialog.setWindowTitle('epubveri settings')
+        layout = QVBoxLayout(dialog)
+        page = ConfigWidget()
+        layout.addWidget(page)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel, dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            page.save_settings()
+            self.settings_changed()
+
+    def settings_changed(self):
+        """Show the last run again under the new settings.
+
+        **Without re-running the validator**, which is the point: the
+        switches decide what is *listed*, and the whole report is already in
+        hand. A user who turns usage notes on and sees nothing change would
+        reasonably conclude the setting does not work.
+
+        The sort setting is applied to the first run of a session and to no
+        later one, so that a header click survives validating again — but a
+        person who has just chosen an order in this dialog means *now*.
+        """
+        panel = getattr(self, '_panel', None)
+        if panel is None or panel.envelope is None:
+            return
+        panel._sorted_once = False
+        self._show(panel.envelope, None)
 
     def _write_book(self, destdir):
         """The book as the user currently has it, as a real `.epub` file.
@@ -1150,7 +1240,8 @@ class EpubVeriTool(Tool):
             # Never silently shorter than the book deserves: if a switch is
             # hiding something, the panel says so and where to turn it back on.
             summary += ('\n%d finding(s) are not listed because of the '
-                        'display settings (Preferences → Plugins → Customize).'
+                        'display settings (the epubveri toolbar button’s '
+                        'menu, or Preferences → Plugins → Customize).'
                         % hidden)
         if update_note:
             summary += '\n[%s]' % update_note
