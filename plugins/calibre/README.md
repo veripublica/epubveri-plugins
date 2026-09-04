@@ -51,6 +51,11 @@ Drag it where you want it, tab it behind another panel, or close it — calibre
 remembers where you put it, and a validation brings it back. It stays hidden
 until you run one.
 
+Rows are tinted by severity — red for fatal and error, yellow for warning,
+cyan for info, usage and advisory — in the colours Doitsu's plugin uses, so
+the two look alike. In a dark theme the same families are used at dark
+lightness and your theme's own text colour is left alone.
+
 Every finding gets a row with its file, line and message, labelled `ERROR`,
 `WARNING`, `USAGE` or `ADVISORY`. **Activating a row opens the file and puts
 the cursor on the line**, the same way calibre's own Check Book results do.

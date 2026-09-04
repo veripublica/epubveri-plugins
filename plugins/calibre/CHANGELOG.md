@@ -25,6 +25,30 @@ Two things the first day of the dock showed, both reported from thread 374940.
   not the plugin. A panel that already has findings in it is never closed
   underneath the user, whatever the timers do.
 
+- **The rows are tinted by severity again.** thiago.eec asked for the line
+  colours he had in Doitsu's plugin (#20) and Doitsu posted the set from his
+  Sigil one (#21). The light palette is **his, to the byte** — pale red for
+  fatal and error, which share a colour there and share one here, pale yellow
+  for warning, pale cyan for info and usage — because the request is for the
+  colours people already know, and two plugins that look almost alike are
+  worse than two that look the same.
+
+  **The dark theme is where this differs from his, and deliberately.** His
+  paints those pale rows in both themes and forces the text black on top of
+  them; that is what thiago's own 0.0.7 contribution had to do to keep them
+  readable, and it makes a dark editor grow bright bands. Here the tint
+  follows the theme — the same three hue families at dark lightness — and
+  **no foreground is set at all**, so the text stays whatever colour the
+  user's theme chose. Which theme is in use is read off the widget's own
+  palette rather than asked of calibre, so it is right for a version that has
+  no `is_dark_theme`, and right when someone switches theme without a
+  restart.
+
+  Advisory findings take the calm cyan: they never move the verdict. A
+  severity the table does not know is left untinted rather than defaulted
+  into a family, and the colour is never the only signal — the first column
+  still says the word.
+
 - **A name in the way is reported as a name in the way.** PeterT's first run
   on Linux (#19) said "epubveri could not be downloaded. The first run needs
   an internet connection" and carried `[Errno 17] File exists` in brackets.

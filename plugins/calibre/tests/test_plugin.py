@@ -621,11 +621,79 @@ class ActionTests(unittest.TestCase):
 class ResultsPanelTests(unittest.TestCase):
     """The view has never been built by anything but a person clicking."""
 
-    def _panel(self, findings, summary='summary'):
+    def _panel(self, findings, summary='summary', base=None):
         tool = stub_tool()
         panel = plugin.ResultsPanel(tool)
+        if base is not None:
+            # The theme is read off the widget's own palette, so a test that
+            # wants a theme sets one rather than hoping the machine running
+            # it has the right one.
+            from qt.core import QPalette, QColor
+            palette = QPalette(panel.palette())
+            palette.setColor(QPalette.ColorRole.Base, QColor(base))
+            panel.setPalette(palette)
         panel.show_results(findings, summary)
         return panel
+
+    def _backgrounds(self, panel):
+        return [panel.items.topLevelItem(i).background(0).color().getRgb()[:3]
+                for i in range(panel.items.topLevelItemCount())]
+
+    def test_a_row_is_tinted_by_the_word_in_its_first_column(self):
+        """thiago.eec asked for the line colours he had in Doitsu's plugin
+        (MobileRead 374940 #20) and Doitsu posted the set (#21). Fatal and
+        error share a colour there and share one here."""
+        panel = self._panel([Finding('fatal'), Finding('error'),
+                             Finding('warning'), Finding('info'),
+                             Finding('usage'),
+                             Finding('usage', advisory=True)],
+                            base='#ffffff')
+        self.assertEqual(self._backgrounds(panel), [
+            (255, 230, 230), (255, 230, 230), (255, 255, 230),
+            (224, 255, 255), (224, 255, 255), (224, 255, 255)])
+        # Every column, not just the first: a row that is half tinted reads
+        # as a rendering fault.
+        row = panel.items.topLevelItem(0)
+        for column in range(panel.items.columnCount()):
+            self.assertEqual(row.background(column).color().getRgb()[:3],
+                             (255, 230, 230), column)
+
+    def test_the_light_set_is_the_one_he_posted_to_the_byte(self):
+        """Pinned rather than described. thiago is asking for the colours he
+        already knows; drifting from them by a shade would answer a request
+        nobody made, and the two plugins sitting side by side would look
+        almost-but-not-quite alike."""
+        self.assertEqual(plugin._TINTS_LIGHT['FATAL'], (255, 230, 230))
+        self.assertEqual(plugin._TINTS_LIGHT['ERROR'], (255, 230, 230))
+        self.assertEqual(plugin._TINTS_LIGHT['WARNING'], (255, 255, 230))
+        self.assertEqual(plugin._TINTS_LIGHT['INFO'], (224, 255, 255))
+        self.assertEqual(plugin._TINTS_LIGHT['USAGE'], (224, 255, 255))
+
+    def test_a_dark_theme_gets_dark_rows_and_keeps_its_own_text(self):
+        """His plugin paints the pale rows in both themes and forces the text
+        black on top of them — which is what made it readable in the dark and
+        what makes a dark editor grow bright bands. The tint follows the theme
+        here instead, and **no foreground is set at all**, so the text stays
+        the colour the user's theme chose."""
+        from qt.core import Qt
+        panel = self._panel([Finding('error'), Finding('warning'),
+                             Finding('usage')], base='#1e1e1e')
+        for red, green, blue in self._backgrounds(panel):
+            luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+            self.assertLess(luminance, 128, (red, green, blue))
+        for index in range(3):
+            self.assertIsNone(
+                panel.items.topLevelItem(index).data(
+                    0, Qt.ItemDataRole.ForegroundRole),
+                "a foreground was forced, so the theme no longer decides")
+
+    def test_a_severity_we_do_not_know_is_left_untinted(self):
+        """A word this table has never seen should look unremarkable rather
+        than be filed under one of the three families by a default."""
+        from qt.core import Qt
+        panel = self._panel([Finding('mystery')], base='#ffffff')
+        self.assertIsNone(panel.items.topLevelItem(0).data(
+            0, Qt.ItemDataRole.BackgroundRole))
 
     def test_every_finding_becomes_a_row_that_says_what_it_is(self):
         panel = self._panel([

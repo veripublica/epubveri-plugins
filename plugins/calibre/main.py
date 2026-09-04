@@ -40,9 +40,9 @@ from calibre.constants import config_dir
 from calibre.gui2 import error_dialog
 from calibre.gui2.tweak_book.plugin import Tool
 from calibre.utils.config import JSONConfig
-from qt.core import (QAbstractItemView, QCheckBox, QDockWidget, QLabel,
-                     QTimer, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
-                     QWidget, Qt)
+from qt.core import (QAbstractItemView, QBrush, QCheckBox, QColor,
+                     QDockWidget, QLabel, QPalette, QTimer, QTreeWidget,
+                     QTreeWidgetItem, QVBoxLayout, QWidget, Qt)
 
 # The plugin's own package, never a bare `from client import ...` with the
 # plugin folder pushed onto sys.path: `client` is a name any other plugin
@@ -346,6 +346,67 @@ def _label(finding):
     return 'ADVISORY' if finding.is_advisory else finding.severity.upper()
 
 
+#: Row tints by the word in the first column. **The light set is Doitsu's,
+#: to the byte** — he posted it from his Sigil plugin (MobileRead 374940 #21)
+#: and his calibre plugin has carried it since 0.0.7. thiago.eec asked for
+#: "the line colors of the previous version" (#20), and the previous version
+#: is his: matching it exactly is the request, not an influence.
+#:
+#: `fatal` and `error` deliberately share a colour, as they do there. The
+#: colour is never the only signal — the first column says the word — so a
+#: reader who cannot separate these hues loses nothing.
+_TINTS_LIGHT = {
+    'FATAL': (255, 230, 230),
+    'ERROR': (255, 230, 230),
+    'WARNING': (255, 255, 230),
+    'INFO': (224, 255, 255),
+    'USAGE': (224, 255, 255),
+    'ADVISORY': (224, 255, 255),
+}
+
+#: The same three families, for a dark theme. **This is the part his plugin
+#: does differently and the difference is the point.** There, the pale rows
+#: are used in both themes and the text is forced to black on top of them —
+#: which is what thiago's 0.0.7 contribution had to do to make it readable,
+#: and it means a dark editor grows six bright bands. Here the tint follows
+#: the theme instead, so the text stays whatever colour the user's theme
+#: chose and nothing is overridden.
+_TINTS_DARK = {
+    'FATAL': (74, 43, 43),
+    'ERROR': (74, 43, 43),
+    'WARNING': (74, 70, 43),
+    'INFO': (43, 66, 71),
+    'USAGE': (43, 66, 71),
+    'ADVISORY': (43, 66, 71),
+}
+
+
+def _is_dark(widget):
+    """Is this widget sitting on a dark background?
+
+    Read off the palette the widget actually has rather than asked of
+    calibre. `QApplication.is_dark_theme` exists in the calibre this is
+    developed against, but `minimum_calibre_version` claims 6.0 and a plugin
+    that reads an attribute a release does not have fails at the worst
+    moment. The palette is Qt's own and cannot go missing, it is right when
+    the user changes theme without restarting, and it is right even if
+    calibre's answer and the widget's actual colours ever disagree.
+    """
+    base = widget.palette().color(QPalette.ColorRole.Base)
+    return (0.299 * base.red() + 0.587 * base.green()
+            + 0.114 * base.blue()) < 128
+
+
+def _tint(label, dark):
+    """The row colour for a label, or None for a word we do not know.
+
+    None rather than a default: an unrecognised severity should look
+    unremarkable rather than be quietly filed under one of these three.
+    """
+    rgb = (_TINTS_DARK if dark else _TINTS_LIGHT).get(label)
+    return None if rgb is None else QColor(*rgb)
+
+
 def _shown(finding):
     """The two display switches, and nothing else filters."""
     if finding.is_advisory:
@@ -463,6 +524,9 @@ class ResultsPanel(QWidget):
         """
         self.summary.setText(summary)
         self.items.clear()
+        # Asked once per run, not once per row, and asked again on every run
+        # so that changing the theme with the editor open is picked up.
+        dark = _is_dark(self)
         for finding in findings:
             item = QTreeWidgetItem(self.items)
             item.setText(0, _label(finding))
@@ -477,6 +541,11 @@ class ResultsPanel(QWidget):
             item.setText(3, text)
             item.setData(0, Qt.ItemDataRole.UserRole,
                          (finding.location, finding.line, finding.column))
+            colour = _tint(_label(finding), dark)
+            if colour is not None:
+                brush = QBrush(colour)
+                for column in range(self.items.columnCount()):
+                    item.setBackground(column, brush)
         for column in range(3):
             self.items.resizeColumnToContents(column)
 
