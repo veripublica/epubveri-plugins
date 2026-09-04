@@ -58,6 +58,12 @@ right-click menu has them too. It is the same page as *Preferences → Plugins �
 epubveri → Customize*, and changing anything there re-lists the run you
 already have rather than making you validate again.
 
+Each row gives the severity, the file, the line and the message. There is no
+column for the position *within* the line: the plugin knows it and uses it —
+double-clicking a row puts the cursor on that character rather than at the
+start of the line — so it is acted on instead of read. Ask if you would rather
+see the number; it is a small change.
+
 Select rows with Ctrl+click and Shift+click, and **Ctrl+C** copies them as
 tab-separated lines — ready to paste into a forum post or a spreadsheet.
 Right-click the table for the rest: copy everything, select all, *Save the

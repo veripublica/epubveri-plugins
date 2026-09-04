@@ -3,7 +3,18 @@
 This plugin is versioned independently of the calibre plugin and of epubveri
 itself. The version Sigil shows comes from `plugin.xml`.
 
-## [0.3.0] — unreleased
+## [0.3.0] — 2026-09-04
+
+- **Documented, not changed: positions in an OPF you have edited this session.**
+  Sigil hands a plugin `build_opf()` — a rebuild from its own model — rather
+  than the file, whenever the OPF is modified, so a line number there belongs
+  to the rebuild and can differ from Code View by a line or two. Asked in
+  thread 374939. DiapDealer's answer is that the rebuild is what a plugin is
+  meant to get, and that the mismatch with Code View should not happen if the
+  flush to disk is working — he is checking which of the two it is. The README
+  describes it as it behaves today rather than claiming what it is for.
+  Nothing else in a book is affected, and an OPF nobody has edited matches
+  exactly.
 
 - **The order of the findings is a setting now**, in the same JSON file as
   the display switches: `"sort"`, one of `severity` (the default),

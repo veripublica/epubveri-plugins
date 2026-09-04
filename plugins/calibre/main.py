@@ -613,6 +613,18 @@ class ResultsPanel(QWidget):
         # thiago.eec asked for sortable columns "particularly by severity"
         # (MobileRead 374940 #20), and a column you are meant to click has to
         # say what it is.
+        #
+        # **Four columns, and the missing one is deliberate: there is no cell
+        # for the position within the line.** A finding carries it and this
+        # panel uses it — a double-click puts the cursor on that character,
+        # not at the start of the line — so the number does its work rather
+        # than being read. The dock is narrow, it sits where Check Book sits,
+        # and epubveri's own habit of quoting line and column belongs to a
+        # command line where nothing can be clicked. Owner's call,
+        # 2026-09-04, made when it was noticed rather than by default; the
+        # answer if someone asks for it is that it is a small change, not a
+        # principle. Sigil's table shows an Offset column because Sigil's API
+        # takes an offset, and Doitsu's calibre plugin shows a Column one.
         self.items.setHeaderLabels(['Severity', 'File', 'Line', 'Message'])
         self.items.header().setSortIndicatorShown(True)
         self.items.header().setSectionsClickable(True)

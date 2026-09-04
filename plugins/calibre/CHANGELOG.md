@@ -3,7 +3,7 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
-## [0.3.0] — unreleased
+## [0.3.0] — 2026-09-04
 
 Minor rather than patch: two of these change what the panel does, not only
 what it gets right. Everything here was reported in thread 374940 on the

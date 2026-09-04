@@ -55,6 +55,14 @@ Findings land in Sigil's validation panel under **File**, **Line** and
 what Sigil uses to put the cursor on the character rather than at the start of
 the line.
 
+**One exception, in the OPF only.** If you have edited the OPF in this session
+and not yet saved, the position of a finding in it can be a line or two away
+from what Code View shows. Sigil hands a plugin a *rebuild* of a modified OPF
+rather than the text on screen, and our line and offset are correct for that
+rebuild. Sigil's maintainer is looking at whether the two ought to line up
+(MobileRead thread 374939); if they come to, this note goes away. Everything
+else in the book, and an OPF you have not edited, matches exactly.
+
 The last line of every run is a summary: which version validated the book, the
 verdict, and — when there are any — how many usage notes and advisory findings
 are in the list above it, neither of which decides the verdict.
