@@ -3,7 +3,7 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
-## [0.4.0] — unreleased
+## [0.4.0] — 2026-09-05
 
 The last two things Doitsu asked for in post 21, and everything thiago.eec
 and he said the next day about 0.3.0 (posts 22 and 23).
