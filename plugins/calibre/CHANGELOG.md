@@ -3,10 +3,12 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
-## [0.4.1] — unreleased
+## [0.4.1] — 2026-09-05
 
-Both of these are the panel's background setting, which 0.4.0 shipped a day
-ago and nobody had looked at until thiago.eec ran it on Windows.
+Both of these are the panel's background setting, which 0.4.0 shipped this
+morning and nobody had looked at until thiago.eec ran it on Windows. Released
+the same day for that reason: the fix cannot be verified where it was written,
+and there is somebody testing right now.
 
 - **A chosen background now reaches the tree, not just the dock.**
   thiago.eec, post 26: "when you choose 'Always dark' or 'Always light' for
