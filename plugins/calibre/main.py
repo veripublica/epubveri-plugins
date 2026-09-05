@@ -976,7 +976,9 @@ class ResultsPanel(QWidget):
         rows = self.rows(selected_only=selected_only)
         if not rows:
             return
-        path = self._ask_where('epubveri-results.csv', 'CSV', 'csv')
+        path = self._ask_where(
+            self.export_name('selected' if selected_only else 'all',
+                             len(rows), 'csv'), 'CSV', 'csv')
         if path:
             self._write(path, self.csv_text(rows))
 
@@ -991,13 +993,47 @@ class ResultsPanel(QWidget):
         """
         if self.envelope is None:
             return
-        path = self._ask_where('epubveri-report.json', 'JSON', 'json')
+        path = self._ask_where(
+            self.export_name('report', len(self.envelope.findings), 'json'),
+            'JSON', 'json')
         if path:
             self._write(path, self.json_text())
 
     def json_text(self):
         return json.dumps(self.envelope.doc, indent=2,
                           ensure_ascii=False) + '\n'
+
+    def export_name(self, scope, count, extension):
+        """What the save dialog offers: which book, what part of it, how much.
+
+        `Suç ve Ceza (Dostoyevski)-epubveri-all-57.csv`
+
+        **The book comes first because the alternative was one name for
+        everything.** Until now every export was proposed as
+        `epubveri-results.csv`, so a second export — of a selection, or of
+        another book — landed on the first, and a folder of them said nothing
+        about which book was which. The stem is the file calibre is editing,
+        which is also what its title bar shows, so the two agree.
+
+        The scope is a word rather than only a number, because a number does
+        not say what it counts and does not separate the two menu entries: a
+        selection of all 57 rows would otherwise be proposed under the same
+        name as the whole table. The count is there as well, since it is the
+        cheapest way to tell two exports of a book apart after it changed.
+
+        Still the same name for the same book, same scope, unchanged: the save
+        dialog asks before replacing, which is the right place for that
+        question.
+        """
+        from calibre.utils.filenames import sanitize_file_name
+        stem = 'epubveri-results'
+        container = self.tool.current_container
+        path = getattr(container, 'path_to_ebook', None) if container else None
+        if path:
+            stem = os.path.splitext(os.path.basename(path))[0]
+            stem = '%s-epubveri' % stem
+        return sanitize_file_name('%s-%s-%d.%s' % (stem, scope, count,
+                                                   extension))
 
     def _ask_where(self, filename, label, extension):
         from calibre.gui2 import choose_save_file

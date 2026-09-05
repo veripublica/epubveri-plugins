@@ -16,6 +16,29 @@ and he said the next day about 0.3.0 (posts 22 and 23).
   selected rows as CSV…*; only the one that says "selected" means it. Doitsu
   asked for the same thing (#23).
 
+- **An export is offered under the book's own name.** Every one used to be
+  proposed as `epubveri-results.csv`, so exporting a selection after the whole
+  table landed on the first file, and a folder of them said nothing about which
+  book was which. Now:
+
+  ```
+  Suç ve Ceza (Dostoyevski)-epubveri-all-57.csv
+  Suç ve Ceza (Dostoyevski)-epubveri-selected-3.csv
+  Suç ve Ceza (Dostoyevski)-epubveri-report-63.json
+  ```
+
+  Which book, which part of it, how much. The stem is the file calibre is
+  editing — the same one its title bar shows — and calibre's own sanitiser
+  keeps a title with a slash or a colon from proposing a path. The scope stays
+  a word beside the count, because a number does not say what it counts, and a
+  selection of every row would otherwise be offered under the name of the whole
+  table. The count is the owner's idea and earns its place the moment a book
+  changes between two exports.
+
+  The same book, same scope, unchanged, twice still offers the same name — and
+  the save dialog asks before replacing, which is the right place for that
+  question.
+
 - **Every CSV field is quoted.** Doitsu again, who called it "more 'robust'".
   `csv` quotes for the comma on its own; the case that needs this is the
   **semicolon**, because a spreadsheet whose list separator is `;` — a German

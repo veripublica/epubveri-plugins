@@ -201,6 +201,10 @@ def stub_tool():
     window.keyboard = StubKeyboard()
 
     class Stubbed(plugin.EpubVeriTool):
+        #: `current_container` is a property on the base class and cannot be
+        #: assigned, so a test that needs a book sets `container` instead.
+        container = None
+
         @property
         def gui(self):
             return window
@@ -208,6 +212,10 @@ def stub_tool():
         @property
         def boss(self):
             return None
+
+        @property
+        def current_container(self):
+            return self.container
 
     tool = Stubbed()
     tool.window = window
@@ -1345,6 +1353,55 @@ class CopyAndExportTests(PinnedPrefs, unittest.TestCase):
         for code in ('RSC-005', 'CSS-028', 'ADV-010'):
             self.assertIn(code, text)
         self.assertEqual(json.loads(text), doc)
+
+    def test_the_offered_filename_names_the_book_the_scope_and_the_count(
+            self):
+        """Until 0.4.0 every export was proposed as `epubveri-results.csv`,
+        so a second one landed on the first and a folder of them said nothing
+        about which book was which. The owner asked for the count as well
+        (2026-09-05); the scope stays a word, because a number does not say
+        what it counts and a selection of every row would otherwise be
+        offered under the name of the whole table."""
+        panel = self._panel([Finding('error'), Finding('usage')])
+        panel.tool.container = types.SimpleNamespace(
+            path_to_ebook='/books/Suç ve Ceza (Dostoyevski).epub',
+            mime_map={})
+        self.assertEqual(panel.export_name('all', 57, 'csv'),
+                         'Suç ve Ceza (Dostoyevski)-epubveri-all-57.csv')
+        self.assertEqual(panel.export_name('selected', 3, 'csv'),
+                         'Suç ve Ceza (Dostoyevski)-epubveri-selected-3.csv')
+        self.assertEqual(panel.export_name('report', 63, 'json'),
+                         'Suç ve Ceza (Dostoyevski)-epubveri-report-63.json')
+
+    def test_a_book_with_no_file_behind_it_still_gets_a_name(self):
+        panel = self._panel([Finding('error')])
+        panel.tool.container = None
+        self.assertEqual(panel.export_name('all', 1, 'csv'),
+                         'epubveri-results-all-1.csv')
+
+    def test_a_separator_in_the_book_name_cannot_reach_the_filename(self):
+        """calibre's own sanitiser, so a title carrying a slash or a colon
+        proposes a filename rather than a path."""
+        panel = self._panel([Finding('error')])
+        panel.tool.container = types.SimpleNamespace(
+            path_to_ebook='/books/A B.epub', mime_map={})
+        name = panel.export_name('all', 1, 'csv')
+        self.assertNotIn('/', name)
+        self.assertTrue(name.endswith('-epubveri-all-1.csv'), name)
+
+    def test_the_two_menu_entries_offer_different_names(self):
+        """The collision the owner met: exporting a selection after the whole
+        table replaced the first file."""
+        panel = self._panel([Finding('error'), Finding('usage')])
+        panel.items.topLevelItem(0).setSelected(True)
+        offered = []
+        panel._ask_where = lambda filename, *a, **kw: offered.append(
+            filename) or None
+        panel.save_csv()
+        panel.save_csv(selected_only=True)
+        self.assertEqual(len(set(offered)), 2, offered)
+        self.assertIn('-all-2.csv', offered[0])
+        self.assertIn('-selected-1.csv', offered[1])
 
     def test_a_panel_that_has_never_run_exports_no_json(self):
         tool = stub_tool()
