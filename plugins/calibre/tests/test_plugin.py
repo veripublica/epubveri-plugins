@@ -1401,7 +1401,50 @@ class CopyAndExportTests(PinnedPrefs, unittest.TestCase):
         panel.save_csv(selected_only=True)
         self.assertEqual(len(set(offered)), 2, offered)
         self.assertIn('-all-2.csv', offered[0])
-        self.assertIn('-selected-1.csv', offered[1])
+        self.assertIn('-selected-line-3.csv', offered[1])
+
+    def test_one_selected_row_is_named_by_its_line_not_by_the_count(self):
+        '''The owner met this while testing 0.4.0: exporting the finding on
+        line 85 and then a different one both offered `selected-1`, because
+        "how many" says nothing about a selection of one. What separates two
+        selections is which rows.'''
+        panel = self._panel([Finding('error', line=85),
+                             Finding('usage', line=118),
+                             Finding('warning', line=12)])
+        offered = []
+        panel._ask_where = lambda filename, *a, **kw: offered.append(
+            filename) or None
+
+        rows = {panel.items.topLevelItem(i).text(plugin.COL_LINE): i
+                for i in range(3)}
+        for line in ('85', '118'):
+            panel.items.clearSelection()
+            panel.items.topLevelItem(rows[line]).setSelected(True)
+            panel.save_csv(selected_only=True)
+        self.assertEqual(len(set(offered)), 2, offered)
+        self.assertIn('-selected-line-85.csv', offered[0])
+        self.assertIn('-selected-line-118.csv', offered[1])
+
+    def test_several_selected_rows_go_back_to_the_count(self):
+        '''There is no short way to name a set, so two rows are two rows.'''
+        panel = self._panel([Finding('error', line=85),
+                             Finding('usage', line=118)])
+        offered = []
+        panel._ask_where = lambda filename, *a, **kw: offered.append(
+            filename) or None
+        panel.items.selectAll()
+        panel.save_csv(selected_only=True)
+        self.assertIn('-selected-2.csv', offered[0])
+
+    def test_a_selected_row_with_no_line_falls_back_to_the_count(self):
+        '''A container-level finding carries no line at all.'''
+        panel = self._panel([Finding('error', line=None)])
+        offered = []
+        panel._ask_where = lambda filename, *a, **kw: offered.append(
+            filename) or None
+        panel.items.selectAll()
+        panel.save_csv(selected_only=True)
+        self.assertIn('-selected-1.csv', offered[0])
 
     def test_a_panel_that_has_never_run_exports_no_json(self):
         tool = stub_tool()

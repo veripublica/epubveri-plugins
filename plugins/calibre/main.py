@@ -976,9 +976,15 @@ class ResultsPanel(QWidget):
         rows = self.rows(selected_only=selected_only)
         if not rows:
             return
+        # One row selected: the name says which one. See `export_name`.
+        line = None
+        if selected_only:
+            chosen = self.items.selectedItems()
+            if len(chosen) == 1:
+                line = getattr(chosen[0], 'line', None)
         path = self._ask_where(
             self.export_name('selected' if selected_only else 'all',
-                             len(rows), 'csv'), 'CSV', 'csv')
+                             len(rows), 'csv', line=line), 'CSV', 'csv')
         if path:
             self._write(path, self.csv_text(rows))
 
@@ -1003,7 +1009,7 @@ class ResultsPanel(QWidget):
         return json.dumps(self.envelope.doc, indent=2,
                           ensure_ascii=False) + '\n'
 
-    def export_name(self, scope, count, extension):
+    def export_name(self, scope, count, extension, line=None):
         """What the save dialog offers: which book, what part of it, how much.
 
         `Suç ve Ceza (Dostoyevski)-epubveri-all-57.csv`
@@ -1021,6 +1027,15 @@ class ResultsPanel(QWidget):
         name as the whole table. The count is there as well, since it is the
         cheapest way to tell two exports of a book apart after it changed.
 
+        **A single selected row is named by its line instead of by the count**
+        — `…-epubveri-selected-line-85.csv`. The owner met the reason while
+        testing: exporting one row and then a different one both produced
+        `selected-1`, because "how many" says nothing about a selection of
+        one. What separates two selections is *which* rows, and for the
+        commonest case — click a finding, export it — the line is exactly
+        that. Two or more rows go back to the count, since there is no short
+        way to name a set.
+
         Still the same name for the same book, same scope, unchanged: the save
         dialog asks before replacing, which is the right place for that
         question.
@@ -1032,8 +1047,11 @@ class ResultsPanel(QWidget):
         if path:
             stem = os.path.splitext(os.path.basename(path))[0]
             stem = '%s-epubveri' % stem
-        return sanitize_file_name('%s-%s-%d.%s' % (stem, scope, count,
-                                                   extension))
+        if line is not None and count == 1:
+            tail = '%s-line-%d' % (scope, line)
+        else:
+            tail = '%s-%d' % (scope, count)
+        return sanitize_file_name('%s-%s.%s' % (stem, tail, extension))
 
     def _ask_where(self, filename, label, extension):
         from calibre.gui2 import choose_save_file

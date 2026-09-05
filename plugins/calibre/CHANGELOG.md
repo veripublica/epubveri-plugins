@@ -24,8 +24,18 @@ and he said the next day about 0.3.0 (posts 22 and 23).
   ```
   Suç ve Ceza (Dostoyevski)-epubveri-all-57.csv
   Suç ve Ceza (Dostoyevski)-epubveri-selected-3.csv
+  Suç ve Ceza (Dostoyevski)-epubveri-selected-line-85.csv
   Suç ve Ceza (Dostoyevski)-epubveri-report-63.json
   ```
+
+  **One selected row is named by its line rather than by the count**, which
+  the owner found by testing the first version of this: exporting the finding
+  on line 85 and then a different one both offered `selected-1`, because "how
+  many" says nothing about a selection of one — and that was the collision
+  this naming exists to stop. What separates two selections is *which* rows,
+  and for the commonest case, clicking a finding and exporting it, the line is
+  exactly that. Two or more rows go back to the count: there is no short way
+  to name a set.
 
   Which book, which part of it, how much. The stem is the file calibre is
   editing — the same one its title bar shows — and calibre's own sanitiser

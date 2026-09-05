@@ -80,7 +80,8 @@ quoted, so a message containing a semicolon survives a spreadsheet whose list
 separator is one. Each export is offered under the book's own name, with what
 it holds — `Suç ve Ceza (Dostoyevski)-epubveri-all-57.csv`,
 `…-epubveri-selected-3.csv`, `…-epubveri-report-63.json` — so a folder of them
-still says which book is which.
+still says which book is which. Export a single row and it is named by its
+line instead: `…-epubveri-selected-line-85.csv`.
 
 Findings arrive **severest first**, and each severity group still reads
 top-to-bottom in book order. Click any column header to reorder — Severity,
