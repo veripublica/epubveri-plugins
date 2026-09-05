@@ -76,6 +76,13 @@ prefs.defaults['show_advisory'] = True
 #: so the same book does not arrive in two different orders depending on
 #: where you are standing.
 prefs.defaults['sort'] = 'severity'
+#: Two appearance settings rather than one, because they are two questions
+#: and only the person looking at the panel can answer either. `panel_theme`
+#: is the panel's own ground; `row_colors` is the severity set painted on it.
+#: Both default to what 0.3.0 shipped, so nobody who does not care sees a
+#: change.
+prefs.defaults['panel_theme'] = 'auto'
+prefs.defaults['row_colors'] = 'theme'
 
 _UPDATE_INTERVAL = timedelta(hours=1)
 _STALE_AFTER = timedelta(days=30)
@@ -422,7 +429,12 @@ _RANK = {
 _RANK_UNKNOWN = 99
 
 #: Column numbers, named because three separate places have to agree.
-COL_SEVERITY, COL_FILE, COL_LINE, COL_MESSAGE = range(4)
+#: **`Col` is here because Doitsu asked for it** (MobileRead 374940 #23):
+#: calibre positions the cursor by line *and* column, so the number is worth
+#: seeing as well as acting on. It was left out of 0.3.0 deliberately and put
+#: in the moment somebody wanted it, which is exactly what that decision said
+#: it was.
+COL_SEVERITY, COL_FILE, COL_LINE, COL_COLUMN, COL_MESSAGE = range(5)
 
 SORT_ORDERS = ('severity', 'severity-low', 'document')
 
@@ -431,8 +443,41 @@ def _rank(label):
     return _RANK.get(label, _RANK_UNKNOWN)
 
 
+#: The panel's own ground when it is not left to calibre. Deliberately plain:
+#: this is a background and a text colour, not a theme — anything more would
+#: be a second opinion about the whole editor.
+_PANEL_LIGHT = {'base': '#ffffff', 'text': '#202020',
+                'window': '#f2f2f2', 'window_text': '#202020'}
+_PANEL_DARK = {'base': '#1e1e1e', 'text': '#e8e8e8',
+               'window': '#2b2b2b', 'window_text': '#e8e8e8'}
+
+#: The one colour that is forced anywhere, and only under `row_colors: pale`
+#: — on a pale row a dark theme's own text colour is unreadable.
+_PALE_INK = (32, 32, 32)
+
+PANEL_THEMES = ('auto', 'light', 'dark')
+ROW_COLORS = ('theme', 'pale')
+
+
+def _setting(key, allowed, default):
+    """A word from the settings file, or the default if it is not one of ours.
+
+    Same rule as `sort`: a hand-edited file must fail towards what the user
+    cannot be harmed by not having chosen.
+    """
+    value = str(prefs.get(key) or default).strip().lower()
+    return value if value in allowed else default
+
+
 def _is_dark(widget):
     """Is this widget sitting on a dark background?
+
+    **The palette is the single place this is decided**, including when the
+    `panel_theme` setting has chosen one: `apply_appearance` paints the
+    ground first, so reading it back gives the chosen answer. A second branch
+    here that consulted the setting directly was written, could not be made
+    to fail by any test, and was removed — two places deciding one thing is
+    how they come to disagree.
 
     Read off the palette the widget actually has rather than asked of
     calibre. `QApplication.is_dark_theme` exists in the calibre this is
@@ -481,6 +526,13 @@ class ConfigWidget(QWidget):
     same book gets the same report from calibre and from Sigil until someone
     chooses otherwise.
 
+    **The two appearance boxes are a matter of taste and are treated as one.**
+    thiago.eec asked for severity colours and then said of the dark-theme set,
+    "I'd rather have the same colors in a dark theme" (374940 #22) — which is
+    a preference, not a defect, and not something to settle by argument. The
+    panel's ground and the severity set are separate questions, so they are
+    separate boxes; both default to what 0.3.0 shipped.
+
     The sort box says how the panel **opens**, not how it stays: a header
     click beats it for the rest of the session. It is here because a setting
     is the only lever the Sigil plugin has — Sigil draws its own table — and
@@ -516,6 +568,35 @@ class ConfigWidget(QWidget):
             'or the exit code: a book that passes epubcheck passes epubveri.')
         layout.addWidget(self.show_advisory)
 
+        appearance = QLabel(self)
+        appearance.setText('<b>Appearance</b>')
+        layout.addWidget(appearance)
+
+        layout.addWidget(QLabel('The panel\u2019s background:', self))
+        self.panel_theme = QComboBox(self)
+        for value, text in (
+                ('auto', 'Follow calibre\u2019s theme'),
+                ('light', 'Always light'),
+                ('dark', 'Always dark')):
+            self.panel_theme.addItem(text, value)
+        self.panel_theme.setCurrentIndex(max(0, self.panel_theme.findData(
+            _setting('panel_theme', PANEL_THEMES, 'auto'))))
+        layout.addWidget(self.panel_theme)
+
+        layout.addWidget(QLabel('Severity colours:', self))
+        self.row_colors = QComboBox(self)
+        for value, text in (
+                ('theme', 'Follow the panel\u2019s background'),
+                ('pale', 'The pale set, in both (as in Sigil)')):
+            self.row_colors.addItem(text, value)
+        self.row_colors.setCurrentIndex(max(0, self.row_colors.findData(
+            _setting('row_colors', ROW_COLORS, 'theme'))))
+        self.row_colors.setToolTip(
+            'The pale set is the one Doitsu\u2019s plugins and Sigil use. In '
+            'a light panel the two choices look the same; the difference is '
+            'what a dark panel does.')
+        layout.addWidget(self.row_colors)
+
         layout.addWidget(QLabel('Open the results sorted by:', self))
         self.sort = QComboBox(self)
         for value, text in (
@@ -545,6 +626,8 @@ class ConfigWidget(QWidget):
         prefs['show_usage'] = self.show_usage.isChecked()
         prefs['show_advisory'] = self.show_advisory.isChecked()
         prefs['sort'] = self.sort.currentData()
+        prefs['panel_theme'] = self.panel_theme.currentData()
+        prefs['row_colors'] = self.row_colors.currentData()
 
 
 class ResultRow(QTreeWidgetItem):
@@ -564,18 +647,20 @@ class ResultRow(QTreeWidgetItem):
     `--sort severity` does, rather than shuffling a group.
     """
 
-    def __init__(self, parent, position, line):
+    def __init__(self, parent, position, line, column):
         QTreeWidgetItem.__init__(self, parent)
         self.position = position
         self.line = line
+        self.column = column
 
     def sort_key(self, column):
         if column == COL_SEVERITY:
             return (_rank(self.text(COL_SEVERITY)), self.position)
-        if column == COL_LINE:
-            # A finding with no line sorts before line 1 rather than
-            # wherever an empty string happens to fall.
-            return (-1 if self.line is None else self.line, self.position)
+        if column in (COL_LINE, COL_COLUMN):
+            # A finding with no line or column sorts before line 1 rather
+            # than wherever an empty string happens to fall.
+            number = self.line if column == COL_LINE else self.column
+            return (-1 if number is None else number, self.position)
         return (self.text(column), self.position)
 
     def __lt__(self, other):
@@ -635,7 +720,8 @@ class ResultsPanel(QWidget):
         # answer if someone asks for it is that it is a small change, not a
         # principle. Sigil's table shows an Offset column because Sigil's API
         # takes an offset, and Doitsu's calibre plugin shows a Column one.
-        self.items.setHeaderLabels(['Severity', 'File', 'Line', 'Message'])
+        self.items.setHeaderLabels(['Severity', 'File', 'Line', 'Col',
+                                    'Message'])
         self.items.header().setSortIndicatorShown(True)
         self.items.header().setSectionsClickable(True)
         self.items.header().sectionClicked.connect(self.sort_by)
@@ -697,29 +783,41 @@ class ResultsPanel(QWidget):
             self._sorted_once = True
             sorting, column, direction = self._opening_order()
         # Asked once per run, not once per row, and asked again on every run
-        # so that changing the theme with the editor open is picked up.
+        # so that changing a setting — or the editor's theme — is picked up
+        # without a restart.
+        self.apply_appearance()
         dark = _is_dark(self)
+        pale = _setting('row_colors', ROW_COLORS, 'theme') == 'pale'
         rows = []
         for position, finding in enumerate(findings):
-            item = ResultRow(None, position, finding.line)
+            item = ResultRow(None, position, finding.line, finding.column)
             rows.append(item)
-            item.setText(0, _label(finding))
-            item.setText(1, finding.location or '')
-            item.setText(2, str(finding.line) if finding.line else '')
+            item.setText(COL_SEVERITY, _label(finding))
+            item.setText(COL_FILE, finding.location or '')
+            item.setText(COL_LINE, str(finding.line) if finding.line else '')
+            item.setText(COL_COLUMN,
+                         str(finding.column) if finding.column else '')
             text = finding.message or ''
             if finding.code:
                 text = '%s: %s' % (finding.code, text)
             if finding.is_advisory:
                 text += ('  (epubcheck does not report this; the verdict is '
                          'unaffected)')
-            item.setText(3, text)
+            item.setText(COL_MESSAGE, text)
             item.setData(0, Qt.ItemDataRole.UserRole,
                          (finding.location, finding.line, finding.column))
-            colour = _tint(_label(finding), dark)
+            # `pale` asks for the light set whatever the panel's ground is,
+            # which is thiago.eec's preference (374940 #22) and matches
+            # Doitsu's plugin and Sigil. The text then has to be forced dark,
+            # since a dark theme's own white would sit on a pale row.
+            colour = _tint(_label(finding), False if pale else dark)
             if colour is not None:
                 brush = QBrush(colour)
+                ink = QBrush(QColor(*_PALE_INK)) if pale else None
                 for tinted in range(self.items.columnCount()):
                     item.setBackground(tinted, brush)
+                    if ink is not None:
+                        item.setForeground(tinted, ink)
         # **The rows are built detached and added in one go**, because
         # sorting cannot happen as they are inserted: an item's sort keys are
         # its text, and the text is set after the item exists.
@@ -732,7 +830,7 @@ class ResultsPanel(QWidget):
             # through `sort_by`.
             self.items.header().setSortIndicator(column, direction)
             self.items.setSortingEnabled(True)
-        for width in range(3):
+        for width in range(COL_MESSAGE):
             self.items.resizeColumnToContents(width)
 
     def _opening_order(self):
@@ -751,6 +849,33 @@ class ResultsPanel(QWidget):
         # Anything unrecognised opens the way the default does. A typo in a
         # settings file should not produce an order nobody chose.
         return True, COL_SEVERITY, Qt.SortOrder.AscendingOrder
+
+    def apply_appearance(self):
+        """Give the panel its own ground, or leave it to calibre.
+
+        **`auto` touches nothing at all**, which is the point: an untouched
+        widget inherits whatever the editor's theme gives it, and inheriting
+        is not the same as copying today's colours into a palette of our own
+        that would then never change again.
+
+        A chosen ground is a background and a text colour and nothing else.
+        Anything more would be a second opinion about the whole editor, which
+        is not a validator's business.
+        """
+        choice = _setting('panel_theme', PANEL_THEMES, 'auto')
+        if choice == 'auto':
+            return
+        colours = _PANEL_LIGHT if choice == 'light' else _PANEL_DARK
+        palette = QPalette(self.palette())
+        for role, key in ((QPalette.ColorRole.Base, 'base'),
+                          (QPalette.ColorRole.Text, 'text'),
+                          (QPalette.ColorRole.Window, 'window'),
+                          (QPalette.ColorRole.WindowText, 'window_text')):
+            palette.setColor(role, QColor(colours[key]))
+        self.setPalette(palette)
+        self.items.setPalette(palette)
+        self.summary.setPalette(palette)
+        self.setAutoFillBackground(True)
 
     def rows(self, selected_only):
         """The rows on screen, in the order they are on screen."""
@@ -772,7 +897,10 @@ class ResultsPanel(QWidget):
         menu.addAction('Copy everything', self.copy_everything)
         menu.addAction('Select all', self.items.selectAll)
         menu.addSeparator()
-        menu.addAction('Save the table as CSV…', self.save_csv)
+        menu.addAction('Save all rows as CSV…', self.save_csv)
+        act = menu.addAction('Save selected rows as CSV…',
+                             lambda: self.save_csv(selected_only=True))
+        act.setEnabled(selected)
         act = menu.addAction("Save epubveri's full report as JSON…",
                              self.save_json)
         act.setEnabled(self.envelope is not None)
@@ -820,18 +948,32 @@ class ResultsPanel(QWidget):
         `attribute "class" not allowed here, expected …` carries both a comma
         and a double quote, and a handmade writer gets one of them wrong.
         """
+        # **Every field quoted**, which Doitsu asked for and called "more
+        # 'robust'" (374940 #23). The reason is not the comma — `csv` handles
+        # that — but the semicolon: a spreadsheet whose list separator is `;`
+        # (a German or Turkish locale, say) splits an unquoted message
+        # containing one straight down the middle. A quoted field survives
+        # either separator.
         buffer = io.StringIO()
-        writer = csv.writer(buffer)
+        writer = csv.writer(buffer, quoting=csv.QUOTE_ALL)
         writer.writerow([self.items.headerItem().text(column)
                          for column in range(self.items.columnCount())])
         writer.writerows(rows)
         return buffer.getvalue()
 
-    def save_csv(self):
+    def save_csv(self, selected_only=False):
         """The table, as it is on screen: the display settings and the sort
         order are the user's, and an export that quietly disagreed with what
-        they are looking at would be worse than no export."""
-        rows = self.rows(selected_only=bool(self.items.selectedItems()))
+        they are looking at would be worse than no export.
+
+        **All of it unless the selection is asked for by name.** 0.3.0 wrote
+        the selection whenever there was one, which surprised thiago.eec —
+        "The CVS exports only the selected line. Is this intentional?"
+        (374940 #22) — and Doitsu put it plainly: it should export all
+        messages by default (#23). Two menu entries now, and the one that
+        says "selected" is the only one that means it.
+        """
+        rows = self.rows(selected_only=selected_only)
         if not rows:
             return
         path = self._ask_where('epubveri-results.csv', 'CSV', 'csv')

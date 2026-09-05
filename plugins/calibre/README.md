@@ -64,7 +64,7 @@ way, so it never shows the previous book's findings. While a validation runs,
 the status bar says what is happening: checking the book, looking for a newer
 epubveri, fetching one, and the verdict at the end.
 
-Each row gives the severity, the file, the line and the message. There is no
+Each row gives the severity, the file, the line, the column and the message. There is no
 column for the position *within* the line: the plugin knows it and uses it —
 double-clicking a row puts the cursor on that character rather than at the
 start of the line — so it is acted on instead of read. Ask if you would rather
@@ -72,10 +72,12 @@ see the number; it is a small change.
 
 Select rows with Ctrl+click and Shift+click, and **Ctrl+C** copies them as
 tab-separated lines — ready to paste into a forum post or a spreadsheet.
-Right-click the table for the rest: copy everything, select all, *Save the
-table as CSV* (what you are looking at, your settings and sort order), and
+Right-click the table for the rest: copy everything, select all, *Save all
+rows as CSV* (and *Save selected rows as CSV* when you have a selection), and
 *Save epubveri's full report as JSON* (the whole envelope, filtered by
-nothing — the file to attach when something looks wrong).
+nothing — the file to attach when something looks wrong). Every CSV field is
+quoted, so a message containing a semicolon survives a spreadsheet whose list
+separator is one.
 
 Findings arrive **severest first**, and each severity group still reads
 top-to-bottom in book order. Click any column header to reorder — Severity,
@@ -104,9 +106,10 @@ validated, not the file on disk.
 
 ## Settings
 
-*Preferences → Plugins → epubveri → Customize*, three switches, **all on by
-default** so that out of the box calibre and Sigil report the same book
-identically.
+*Preferences → Plugins → epubveri → Customize* — also reachable from the
+toolbar button's arrow, which is one click from the book. Three switches, **all
+on by default** so that out of the box calibre and Sigil report the same book
+identically, plus how the panel opens and how it looks.
 
 **Keep epubveri up to date automatically.** This one is about *the network*
 rather than the version: clearing it stops every request — for a metered
@@ -120,6 +123,14 @@ wrong, not a nag.
 
 **Show advisory findings epubcheck does not make.** epubveri's own `ADV-*`
 checks.
+
+**Appearance: two boxes, and they are a matter of taste.** *The panel's
+background* follows calibre's theme by default, or you can pin it light or
+dark. *Severity colours* either follow that background — pale tints on a light
+one, the same three colours at dark lightness on a dark one — or stay the pale
+set in both, which is what Doitsu's plugins and Sigil use. In a light panel the
+two choices look identical; the difference is what a dark panel does. Both
+start where they were, so nothing changes for anyone who does not go looking.
 
 Turning either display switch off makes the panel shorter, never quieter about
 it: the summary then says how many findings are not listed and where the

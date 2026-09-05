@@ -654,8 +654,10 @@ class PinnedPrefs(object):
     back.
     """
 
-    KEYS = ('sort', 'show_usage', 'show_advisory')
-    VALUES = {'sort': 'severity', 'show_usage': True, 'show_advisory': True}
+    KEYS = ('sort', 'show_usage', 'show_advisory', 'panel_theme',
+            'row_colors')
+    VALUES = {'sort': 'severity', 'show_usage': True, 'show_advisory': True,
+              'panel_theme': 'auto', 'row_colors': 'theme'}
 
     def setUp(self):
         self._saved = {key: plugin.prefs[key] for key in self.KEYS}
@@ -863,10 +865,12 @@ class ResultsPanelTests(PinnedPrefs, unittest.TestCase):
         labels = [panel.items.topLevelItem(i).text(0) for i in range(3)]
         self.assertEqual(labels, ['ERROR', 'USAGE', 'ADVISORY'])
         last = panel.items.topLevelItem(2)
-        self.assertEqual(last.text(1), 'OEBPS/content.opf')
-        self.assertEqual(last.text(2), '91')
-        self.assertIn('ADV-010', last.text(3))
-        self.assertIn('epubcheck does not report this', last.text(3))
+        self.assertEqual(last.text(plugin.COL_FILE), 'OEBPS/content.opf')
+        self.assertEqual(last.text(plugin.COL_LINE), '91')
+        self.assertEqual(last.text(plugin.COL_COLUMN), '5')
+        self.assertIn('ADV-010', last.text(plugin.COL_MESSAGE))
+        self.assertIn('epubcheck does not report this',
+                      last.text(plugin.COL_MESSAGE))
         # The row carries the position the editor will be sent to.
         from qt.core import Qt
         self.assertEqual(last.data(0, Qt.ItemDataRole.UserRole),
@@ -896,6 +900,84 @@ class ResultsPanelTests(PinnedPrefs, unittest.TestCase):
         self.assertEqual(item.text(1), '')
         self.assertEqual(item.text(2), '')
         self.assertIsNone(panel.go_to(item))
+
+
+class AppearanceTests(PinnedPrefs, unittest.TestCase):
+    """Two settings rather than one, because they are two questions.
+
+    The owner's reasoning, 2026-09-05: this is personal preference and only
+    the person looking at the panel can answer it. thiago.eec asked for the
+    colours in the first place and then said of the dark-theme set, "I'd
+    rather have the same colors in a dark theme" (374940 #22) — a taste, not
+    a defect, and not something to settle by argument.
+    """
+
+    def _panel(self, findings, **settings):
+        for key, value in settings.items():
+            plugin.prefs[key] = value           # restored by tearDown
+        tool = stub_tool()
+        panel = plugin.ResultsPanel(tool)
+        panel.show_results(findings, 'summary')
+        return panel
+
+    def _background(self, panel, row=0):
+        return panel.items.topLevelItem(row).background(0).color().getRgb()[:3]
+
+    def test_defaults_are_what_0_3_0_shipped(self):
+        """Nobody who does not care sees a change."""
+        self.assertEqual(plugin.prefs['panel_theme'], 'auto')
+        self.assertEqual(plugin.prefs['row_colors'], 'theme')
+
+    def test_a_chosen_ground_decides_the_tints_without_asking_the_theme(self):
+        light = self._panel([Finding('error')], panel_theme='light')
+        self.assertEqual(self._background(light), plugin._TINTS_LIGHT['ERROR'])
+        dark = self._panel([Finding('error')], panel_theme='dark')
+        self.assertEqual(self._background(dark), plugin._TINTS_DARK['ERROR'])
+
+    def test_a_chosen_ground_is_painted_on_the_panel(self):
+        from qt.core import QPalette
+        panel = self._panel([Finding('error')], panel_theme='dark')
+        base = panel.items.palette().color(QPalette.ColorRole.Base)
+        self.assertEqual(base.name(), plugin._PANEL_DARK['base'])
+
+    def test_auto_touches_no_palette_at_all(self):
+        """Inheriting is not the same as copying today's colours into a
+        palette of our own, which would then never change again."""
+        from qt.core import QPalette, QColor
+        tool = stub_tool()
+        panel = plugin.ResultsPanel(tool)
+        before = QPalette(panel.palette())
+        before.setColor(QPalette.ColorRole.Base, QColor('#123456'))
+        panel.setPalette(before)
+        plugin.prefs['panel_theme'] = 'auto'
+        panel.show_results([Finding('error')], 'summary')
+        self.assertEqual(
+            panel.palette().color(QPalette.ColorRole.Base).name(), '#123456')
+
+    def test_pale_keeps_the_light_set_on_a_dark_panel_and_forces_the_ink(self):
+        """What thiago.eec asked for: the same colours in a dark theme. The
+        text has to be forced dark then, since a dark theme's own white would
+        sit on a pale row."""
+        from qt.core import Qt
+        panel = self._panel([Finding('error')], panel_theme='dark',
+                            row_colors='pale')
+        self.assertEqual(self._background(panel), plugin._TINTS_LIGHT['ERROR'])
+        ink = panel.items.topLevelItem(0).foreground(0).color().getRgb()[:3]
+        self.assertEqual(ink, plugin._PALE_INK)
+        self.assertIsNotNone(panel.items.topLevelItem(0).data(
+            0, Qt.ItemDataRole.ForegroundRole))
+
+    def test_theme_leaves_the_text_colour_to_the_theme(self):
+        from qt.core import Qt
+        panel = self._panel([Finding('error')], panel_theme='dark',
+                            row_colors='theme')
+        self.assertIsNone(panel.items.topLevelItem(0).data(
+            0, Qt.ItemDataRole.ForegroundRole))
+
+    def test_a_word_neither_setting_knows_falls_back_to_the_default(self):
+        panel = self._panel([Finding('error')], panel_theme='midnight',
+                            row_colors='neon')
+        self.assertEqual(self._background(panel), plugin._TINTS_LIGHT['ERROR'])
 
 
 class CleanBookTests(PinnedPrefs, unittest.TestCase):
@@ -1186,13 +1268,64 @@ class CopyAndExportTests(PinnedPrefs, unittest.TestCase):
             message='attribute "class" not allowed here, expected "id"')])
         text = panel.csv_text(panel.rows(selected_only=False))
         lines = text.splitlines()
-        self.assertEqual(lines[0], 'Severity,File,Line,Message')
+        self.assertEqual(lines[0],
+                         '"Severity","File","Line","Col","Message"')
         self.assertIn('""class""', lines[1])
         import csv as csv_module
         parsed = list(csv_module.reader(io_module().StringIO(text)))
         self.assertEqual(len(parsed), 2)
         self.assertIn('attribute "class" not allowed here, expected "id"',
-                      parsed[1][3])
+                      parsed[1][plugin.COL_MESSAGE])
+
+    def test_a_semicolon_cannot_split_a_row_because_every_field_is_quoted(
+            self):
+        '''Doitsu asked for the quotes and called them more robust (374940
+        #23). `csv` quotes for the comma on its own; the danger is the
+        semicolon, because a spreadsheet whose list separator is that — a
+        German or Turkish locale — splits an unquoted message containing one
+        straight down the middle. Read the file back with that separator and
+        each line has to come out whole.'''
+        import csv as csv_module
+        panel = self._panel([Finding(
+            'error', code='RSC-005',
+            message='element a is not allowed; expected p')])
+        text = panel.csv_text(panel.rows(selected_only=False))
+        # Every field quoted, header included. Asserting on the file rather
+        # than on a stand-in parser: a first version of this test read the
+        # text back with `delimiter=';'` to play the part of such a
+        # spreadsheet, and Python's reader does not behave like one.
+        import re as re_module
+        for line in text.splitlines():
+            self.assertIsNotNone(
+                re_module.fullmatch(r'("(?:[^"]|"")*")(,"(?:[^"]|"")*")*',
+                                    line), line)
+        back = list(csv_module.reader(io_module().StringIO(text)))
+        self.assertEqual(back[1][plugin.COL_MESSAGE],
+                         'RSC-005: element a is not allowed; expected p')
+
+    def test_csv_writes_everything_unless_the_selection_is_asked_for(self):
+        '''0.3.0 wrote the selection whenever there was one, which surprised
+        thiago.eec: "The CVS exports only the selected line. Is this
+        intentional? JSON exports the full report." (374940 #22)'''
+        panel = self._panel([Finding('error'), Finding('warning'),
+                             Finding('usage')])
+        panel.items.topLevelItem(0).setSelected(True)
+        self.assertEqual(len(panel.rows(selected_only=False)), 3)
+        self.assertEqual(len(panel.rows(selected_only=True)), 1)
+        rows = panel.csv_text(panel.rows(selected_only=False)).splitlines()
+        self.assertEqual(len(rows), 4, 'header plus every row')
+
+        # And the menu entry itself, which is where 0.3.0 went wrong: it
+        # asked the table whether anything was selected instead of being told.
+        written = []
+        panel._ask_where = lambda *a, **kw: '/dev/null'
+        panel._write = lambda path, text: written.append(text)
+        panel.save_csv()
+        self.assertEqual(len(written[-1].splitlines()), 4,
+                         'the default export dropped to the selection')
+        panel.save_csv(selected_only=True)
+        self.assertEqual(len(written[-1].splitlines()), 2,
+                         'header plus the one selected row')
 
     def test_the_json_export_is_the_whole_report_not_the_visible_rows(self):
         """The two exports answer different questions. The CSV is the table
@@ -1542,7 +1675,7 @@ class SummaryTests(unittest.TestCase):
         self.assertNotIn('not listed', text)
 
 
-class ConfigWidgetTests(unittest.TestCase):
+class ConfigWidgetTests(PinnedPrefs, unittest.TestCase):
     """The page this plugin has that Sigil has nowhere to put.
 
     Built under Fusion like everything else here — see `qt_app`, where the
@@ -1598,6 +1731,29 @@ class ConfigWidgetTests(unittest.TestCase):
             self.assertEqual(reopened.sort.currentData(), 'document')
         finally:
             plugin.prefs['sort'] = saved
+
+    def test_the_two_appearance_boxes_show_and_save(self):
+        '''Two boxes rather than one: the panel's ground and the severity set
+        are separate questions, and both are taste.'''
+        widget = plugin.ConfigWidget()
+        self.assertEqual([widget.panel_theme.itemData(i)
+                          for i in range(widget.panel_theme.count())],
+                         list(plugin.PANEL_THEMES))
+        self.assertEqual([widget.row_colors.itemData(i)
+                          for i in range(widget.row_colors.count())],
+                         list(plugin.ROW_COLORS))
+        self.assertEqual(widget.panel_theme.currentData(), 'auto')
+        self.assertEqual(widget.row_colors.currentData(), 'theme')
+
+        widget.panel_theme.setCurrentIndex(
+            list(plugin.PANEL_THEMES).index('dark'))
+        widget.row_colors.setCurrentIndex(list(plugin.ROW_COLORS).index('pale'))
+        widget.save_settings()
+        self.assertEqual(plugin.prefs['panel_theme'], 'dark')
+        self.assertEqual(plugin.prefs['row_colors'], 'pale')
+        reopened = plugin.ConfigWidget()
+        self.assertEqual(reopened.panel_theme.currentData(), 'dark')
+        self.assertEqual(reopened.row_colors.currentData(), 'pale')
 
     def test_a_settings_file_with_a_word_we_do_not_know_still_opens(self):
         """Hand-edited files are a supported way to set these — DNSB says he

@@ -5,7 +5,44 @@ calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
 ## [0.4.0] — unreleased
 
-The last two things Doitsu asked for in thread 374940, post 21.
+The last two things Doitsu asked for in post 21, and everything thiago.eec
+and he said the next day about 0.3.0 (posts 22 and 23).
+
+- **The CSV exports everything again.** thiago.eec: "The CVS exports only the
+  selected line. Is this intentional? JSON exports the full report." (#22) It
+  was not intentional in the sense he means — 0.3.0 asked the table whether
+  anything happened to be selected instead of being told what was wanted. The
+  menu now has *Save all rows as CSV…* and, when there is a selection, *Save
+  selected rows as CSV…*; only the one that says "selected" means it. Doitsu
+  asked for the same thing (#23).
+
+- **Every CSV field is quoted.** Doitsu again, who called it "more 'robust'".
+  `csv` quotes for the comma on its own; the case that needs this is the
+  **semicolon**, because a spreadsheet whose list separator is `;` — a German
+  or Turkish locale — splits an unquoted message containing one straight down
+  the middle. A quoted field survives either separator.
+
+- **There is a Col column.** Doitsu: "Since the Calibre API allows to position
+  the cursor by line _and column_, it'd be helpful, if you added a Column
+  column." (#23) It was left out of 0.3.0 on purpose — the number is used
+  rather than read, since a double-click puts the cursor on that character —
+  and the note recording that decision said the answer if anyone asked would
+  be that this is a small change and not a principle. Somebody asked. It sorts
+  as a number, like Line.
+
+- **The panel's background and the severity colours are two settings now,**
+  under *Appearance* in the same page. thiago.eec, of the dark-theme set: "I'd
+  rather have the same colors in a dark theme. The new bacground colors are
+  better than no color at all, but not as good as the original colors." (#22)
+
+  That is a preference, not a defect, and the owner's call was that it should
+  not be settled by argument at all: `panel_theme` is `auto` (follow calibre),
+  `light` or `dark`, and `row_colors` is `theme` (follow the panel) or `pale`
+  (the light set in both, as Doitsu's plugins and Sigil use, with the text
+  forced dark so it stays readable). **Both default to what 0.3.0 shipped**,
+  so anyone who does not care sees no change; the combinations people asked
+  for — a dark panel with pale rows, or a light panel inside a dark calibre —
+  are two clicks.
 
 - **A clean book no longer opens the panel.** His words: "if no problems were
   found, simply display a message box instead of an empty widget." A panel
