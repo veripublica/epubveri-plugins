@@ -3,6 +3,31 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
+## [0.4.1] — unreleased
+
+Both of these are the panel's background setting, which 0.4.0 shipped a day
+ago and nobody had looked at until thiago.eec ran it on Windows.
+
+- **A chosen background now reaches the tree, not just the dock.**
+  thiago.eec, post 26: "when you choose 'Always dark' or 'Always light' for
+  the background, only the dock gets repainted, the tree widget remains the
+  same color as in calibre theme." The panel told the tree in the one way
+  that does not arrive everywhere — a palette, which a platform style is free
+  to ignore for an item view, and Windows does. It is told twice now, the
+  second time with a style sheet naming the same two colours, which Qt draws
+  itself. **Not reproducible on macOS under either style**, so this is
+  reasoned from where the two platforms differ rather than from a failure
+  seen here; the per-row severity colours and the selection colour were
+  measured to be untouched by it.
+
+- **"Follow calibre" takes a background off again.** Choosing *Always dark*
+  and then going back to *Follow calibre* left the panel dark until calibre
+  was restarted — and left the dark severity colours with it, since the row
+  colours are decided by reading the panel's own background back. One panel
+  is built per editor session and reused, so declining to paint a background
+  was not the same as removing one. Nobody reported this; it was found while
+  looking into the report above.
+
 ## [0.4.0] — 2026-09-05
 
 The last two things Doitsu asked for in post 21, and everything thiago.eec

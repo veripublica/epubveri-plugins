@@ -689,6 +689,10 @@ class ResultsPanel(QWidget):
     _sorted_once = False
     #: The last run's whole report, for the JSON export. None until a run.
     envelope = None
+    #: Whether a ground of ours is currently painted on. **One panel is built
+    #: per editor session and reused**, so `auto` has to be able to take a
+    #: ground off again rather than merely decline to put one on.
+    _ground = False
 
     def __init__(self, tool, parent=None):
         QWidget.__init__(self, parent)
@@ -853,16 +857,22 @@ class ResultsPanel(QWidget):
     def apply_appearance(self):
         """Give the panel its own ground, or leave it to calibre.
 
-        **`auto` touches nothing at all**, which is the point: an untouched
-        widget inherits whatever the editor's theme gives it, and inheriting
-        is not the same as copying today's colours into a palette of our own
-        that would then never change again.
+        **`auto` touches nothing at all on a panel that never had a ground**,
+        which is the point: an untouched widget inherits whatever the
+        editor's theme gives it, and inheriting is not the same as copying
+        today's colours into a palette of our own that would then never
+        change again. On a panel that *does* have one it takes it off — see
+        `remove_ground`.
 
         A chosen ground is a background and a text colour and nothing else.
         Anything more would be a second opinion about the whole editor, which
         is not a validator's business.
         """
         choice = _setting('panel_theme', PANEL_THEMES, 'auto')
+        # Off first, always. Switching dark to light would otherwise copy the
+        # *dark* palette's remaining roles into the light one, since the
+        # copy below is taken from whatever the panel is wearing now.
+        self.remove_ground()
         if choice == 'auto':
             return
         colours = _PANEL_LIGHT if choice == 'light' else _PANEL_DARK
@@ -875,7 +885,50 @@ class ResultsPanel(QWidget):
         self.setPalette(palette)
         self.items.setPalette(palette)
         self.summary.setPalette(palette)
+        # **A palette does not reach an item view on every platform, and the
+        # tree is the one widget here that is an item view.** Where the
+        # platform style paints an item view's background itself, the panel
+        # around the tree changes colour and the tree does not:
+        # thiago.eec saw exactly that on Windows with both grounds
+        # (MobileRead 374940 #26), where macOS under either style shows it
+        # correctly. A style sheet is drawn by Qt rather than handed to the
+        # platform theme, so it is the one instruction that arrives
+        # everywhere. It is deliberately the same two colours as the palette
+        # and not a third opinion; per-row tints and the selection colour are
+        # untouched by it, which was measured rather than assumed.
+        self.items.setStyleSheet(
+            'QTreeWidget { background-color: %s; color: %s; }'
+            % (colours['base'], colours['text']))
         self.setAutoFillBackground(True)
+        self._ground = True
+
+    def remove_ground(self):
+        """Give the panel back to calibre's theme.
+
+        An empty `QPalette` is how Qt is told to inherit again — not a
+        snapshot of the colours taken when the panel was built, which would
+        freeze whatever the editor's theme happened to be that morning.
+
+        This exists because **the panel is built once per editor session and
+        reused**: before it, choosing a ground and then choosing "follow
+        calibre" left the old ground on until calibre was restarted, and left
+        the *row tints* with it, since `_is_dark` reads the palette back.
+        Nobody reported that; it was found while looking into #26.
+        """
+        if not self._ground:
+            return
+        self._ground = False
+        # **The style sheet comes off first, and the order is not cosmetic.**
+        # Qt saves a widget's palette when a style sheet is set on it and
+        # puts that copy back when the sheet is cleared — so clearing after
+        # the reset restores the ground we had just taken off — and only on
+        # the tree, which is the one widget wearing a sheet, so the panel
+        # goes back to calibre's colours and the tree stays dark. Written
+        # from a failing test, not from the documentation.
+        self.items.setStyleSheet('')
+        for widget in (self, self.items, self.summary):
+            widget.setPalette(QPalette())
+        self.setAutoFillBackground(False)
 
     def rows(self, selected_only):
         """The rows on screen, in the order they are on screen."""

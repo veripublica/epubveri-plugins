@@ -987,6 +987,84 @@ class AppearanceTests(PinnedPrefs, unittest.TestCase):
                             row_colors='neon')
         self.assertEqual(self._background(panel), plugin._TINTS_LIGHT['ERROR'])
 
+    def test_a_ground_comes_off_again_and_takes_the_tints_with_it(self):
+        """One panel is built per editor session and reused, so choosing
+        "follow calibre" after a ground has to *undo* it.
+
+        Before this it did not: the panel stayed dark until calibre was
+        restarted, and so did the row tints, because `_is_dark` reads the
+        palette back and the palette was still ours. Found while looking into
+        thiago.eec's #26, reported by nobody.
+        """
+        from qt.core import QPalette
+        tool = stub_tool()
+        panel = plugin.ResultsPanel(tool)
+        inherited = panel.palette().color(QPalette.ColorRole.Base).name()
+        plugin.prefs['panel_theme'] = 'dark'
+        panel.show_results([Finding('error')], 'summary')
+        self.assertEqual(self._background(panel), plugin._TINTS_DARK['ERROR'])
+        plugin.prefs['panel_theme'] = 'auto'
+        panel.show_results([Finding('error')], 'summary')
+        self.assertEqual(
+            panel.palette().color(QPalette.ColorRole.Base).name(), inherited)
+        self.assertEqual(
+            panel.items.palette().color(QPalette.ColorRole.Base).name(),
+            inherited)
+        self.assertEqual(self._background(panel), plugin._TINTS_LIGHT['ERROR'])
+        self.assertEqual(panel.items.styleSheet(), '')
+
+    def test_switching_ground_does_not_carry_the_old_one_along(self):
+        """The palette is copied from whatever the panel is wearing, so a
+        ground has to come off before the next one goes on."""
+        from qt.core import QPalette
+        tool = stub_tool()
+        panel = plugin.ResultsPanel(tool)
+        for choice in ('dark', 'light', 'dark'):
+            plugin.prefs['panel_theme'] = choice
+            panel.show_results([Finding('error')], 'summary')
+        wanted = plugin._PANEL_DARK
+        self.assertEqual(
+            panel.palette().color(QPalette.ColorRole.Window).name(),
+            wanted['window'])
+
+    def test_the_tree_is_told_a_second_way_the_platform_cannot_ignore(self):
+        """thiago.eec, MobileRead 374940 #26, on Windows: "only the dock gets
+        repainted, the tree widget remains the same color as in calibre
+        theme."
+
+        **This test asserts the style sheet rather than the painting, and
+        that is the honest thing to do here.** Rendering the panel and
+        reading the pixel back passes on macOS under both Fusion and
+        calibre's own style *with the bug present* — which is how the bug
+        shipped past a suite that already checked the palette. The tree is
+        the one item view in the panel, and where the platform style paints
+        an item view's background itself a palette never reaches it. A style
+        sheet is drawn by Qt, so it does.
+        """
+        panel = self._panel([Finding('error')], panel_theme='dark')
+        sheet = panel.items.styleSheet()
+        self.assertIn(plugin._PANEL_DARK['base'], sheet)
+        self.assertIn(plugin._PANEL_DARK['text'], sheet)
+        light = self._panel([Finding('error')], panel_theme='light')
+        self.assertIn(plugin._PANEL_LIGHT['base'], light.items.styleSheet())
+
+    def test_the_tint_and_the_selection_survive_the_style_sheet(self):
+        """The style sheet names a background for the tree, and a per-row
+        brush has to keep beating it — measured with a rendered pixel before
+        it was written, since a style sheet on an item view is exactly the
+        kind of thing that quietly takes over its painting."""
+        from qt.core import QImage, QColor, Qt
+        panel = self._panel([Finding('error')], panel_theme='dark')
+        panel.resize(700, 300)
+        image = QImage(panel.size(), QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.magenta)
+        panel.render(image)
+        row = QColor(image.pixel(350, 60)).getRgb()[:3]
+        self.assertEqual(row, plugin._TINTS_DARK['ERROR'])
+        empty = QColor(image.pixel(350, panel.height() - 20)).getRgb()[:3]
+        self.assertEqual(
+            empty, QColor(plugin._PANEL_DARK['base']).getRgb()[:3])
+
 
 class CleanBookTests(PinnedPrefs, unittest.TestCase):
     """Doitsu, MobileRead 374940 #21: "if no problems were found, simply
