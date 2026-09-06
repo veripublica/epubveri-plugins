@@ -3,7 +3,7 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
-## [0.4.2] — unreleased
+## [0.4.2] — 2026-09-06
 
 - **Clicking a column heading sorts the panel under every Sort setting, not
   just two of them.** Doitsu asked for header sorting (374940 #28) on a panel
