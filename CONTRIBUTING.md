@@ -52,6 +52,14 @@ reports a packaging error the book does not have), that a full
 container-relative path reaches the editor rather than a basename, and that the
 display switches do what their names say.
 
+`test_in_sigil.py` is the other half and runs in the same command: it drives
+the plugin through **Sigil's own `launcher.py`**, with its `Wrapper` and its
+result XML and no window. It needs Sigil installed and skips without it
+(`SIGIL_APP=…` points at a non-default install). What only it can see is
+whatever is true because Sigil is on the other end — above all that the result
+XML **parses**, since Sigil writes our message into an attribute without
+escaping it, and one unescaped quote makes Sigil display nothing at all.
+
 ## Building a package
 
 ```

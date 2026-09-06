@@ -7,12 +7,17 @@
 # any later version. See the LICENSE file at the root of this repository.
 """Drive `plugin.run(bk)` against a fake Sigil container.
 
-Sigil cannot be scripted, so the parts that can go wrong silently are pinned
-here instead: that the temporary `.epub` we hand epubveri is a *valid
+Sigil's *window* cannot be scripted, so the parts that can go wrong silently
+are pinned here against a container of our own making: that the temporary `.epub` we hand epubveri is a *valid
 container* (mimetype first and stored — get that wrong and every run reports a
 packaging error the book does not have), that a full container-relative path
 reaches `add_result` rather than a basename, and that the display filters do
 what their names say.
+
+**Its launcher can be scripted, and `test_in_sigil.py` does it** — Sigil's own
+`launcher.py`, `Wrapper` and result XML, with no GUI. That file covers what
+this one cannot: whatever is true only because Sigil is on the other end.
+This file's container is our idea of Sigil; that one's is Sigil.
 
 Set EPUBVERI_BINARY to test against a build other than the installed one.
 """
