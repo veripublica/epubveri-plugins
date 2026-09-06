@@ -3,6 +3,27 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
+## [0.4.2] — unreleased
+
+- **Clicking a column heading sorts the panel under every Sort setting, not
+  just two of them.** Doitsu asked for header sorting (374940 #28) on a panel
+  that has had it since 0.3.0 — under *Severest first* and *Least severe
+  first* it worked, and under **Document order** nothing happened at all.
+
+  Filling the table switches Qt's sorting off, so the rows are not re-sorted
+  once per row as they arrive. `QTreeView.setSortingEnabled(False)` also
+  clears the header's `sectionsClickable`, which is not in its name: the
+  constructor had asked for a clickable header and the first validation
+  quietly took it away. The click then never reached the handler that exists
+  for exactly this case, so *Document order* meant **unsortable** rather than
+  *unsorted until you click*, which is what it was meant to mean.
+
+  The panel still opens in the book's own order under that setting — Qt has
+  no unsorted state once sorting is on, so the only honest way to offer it is
+  not to sort — and the first click now sorts, the next reverses, as
+  everywhere else. No sort arrow appears until the first click, because until
+  then nothing is sorted.
+
 ## [0.4.1] — 2026-09-05
 
 Both of these are the panel's background setting, which 0.4.0 shipped this

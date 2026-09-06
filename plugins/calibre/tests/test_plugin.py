@@ -817,6 +817,72 @@ class ResultsPanelTests(PinnedPrefs, unittest.TestCase):
         panel.items.header().sectionClicked.emit(plugin.COL_SEVERITY)
         self.assertEqual(self._labels(panel), ['FATAL', 'WARNING', 'USAGE'])
 
+    def _click_header(self, panel, column):
+        """A real press and release on the header section.
+
+        **Not `sectionClicked.emit`.** Emitting the signal calls our slot
+        and proves nothing about whether a click can reach it — which is
+        exactly what had gone wrong: `QTreeView.setSortingEnabled(False)`
+        makes the header unclickable, so in document order the signal was
+        never emitted at all and the test above passed for the whole life of
+        the defect. A test that raises the signal itself cannot see the
+        wire being cut.
+        """
+        from qt.core import QApplication, QEvent, QMouseEvent, QPointF, Qt
+        # The widget has to be laid out or the header has no height and the
+        # sections no position, and the event then lands nowhere.
+        # `WA_DontShowOnScreen` realises it without putting a window in
+        # front of whoever is running the suite.
+        panel.resize(800, 300)
+        panel.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        panel.show()
+        QApplication.processEvents()
+        header = panel.items.header()
+        x = header.sectionPosition(column) + header.sectionSize(column) // 2
+        pos = QPointF(x, header.height() / 2)
+        glob = QPointF(header.viewport().mapToGlobal(pos.toPoint()))
+        for kind, held in (
+                (QEvent.Type.MouseButtonPress, Qt.MouseButton.LeftButton),
+                (QEvent.Type.MouseButtonRelease, Qt.MouseButton.NoButton)):
+            QApplication.sendEvent(header.viewport(), QMouseEvent(
+                kind, pos, glob, Qt.MouseButton.LeftButton, held,
+                Qt.KeyboardModifier.NoModifier))
+
+    def test_document_order_leaves_the_header_clickable(self):
+        """Doitsu asked for header sorting on a panel that had it under the
+        other two orders (MobileRead 374940 #28). Under `document` it did
+        not: filling the table switches sorting off so the rows are not
+        re-sorted as they arrive, and `setSortingEnabled(False)` *also*
+        clears `sectionsClickable` — which the constructor had set and
+        nothing set again."""
+        panel = self._sorted_panel([Finding('usage')], order='document')
+        self.assertFalse(panel.items.isSortingEnabled())
+        self.assertTrue(panel.items.header().sectionsClickable())
+
+    def test_a_real_click_sorts_in_document_order_and_the_next_reverses(self):
+        findings = [Finding('error', line=30), Finding('warning', line=10),
+                    Finding('error', line=20)]
+        panel = self._sorted_panel(findings, order='document')
+        lines = lambda: [panel.items.topLevelItem(i).text(plugin.COL_LINE)
+                         for i in range(panel.items.topLevelItemCount())]
+        self.assertEqual(lines(), ['30', '10', '20'])
+        self._click_header(panel, plugin.COL_LINE)
+        self.assertEqual(lines(), ['10', '20', '30'])
+        self._click_header(panel, plugin.COL_LINE)
+        self.assertEqual(lines(), ['30', '20', '10'])
+
+    def test_a_real_click_still_toggles_when_the_panel_opened_sorted(self):
+        """The other two orders were never broken; pinned so a fix for
+        `document` cannot quietly cost them."""
+        findings = [Finding('error', line=30), Finding('warning', line=10),
+                    Finding('error', line=20)]
+        panel = self._sorted_panel(findings)
+        self.assertTrue(panel.items.isSortingEnabled())
+        self._click_header(panel, plugin.COL_LINE)
+        lines = [panel.items.topLevelItem(i).text(plugin.COL_LINE)
+                 for i in range(panel.items.topLevelItemCount())]
+        self.assertEqual(lines, ['10', '20', '30'])
+
     def test_a_header_click_is_not_undone_by_validating_again(self):
         """The setting says how the panel opens, once. After that the user's
         click owns the order for the session — otherwise every validation

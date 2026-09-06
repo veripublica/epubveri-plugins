@@ -834,6 +834,21 @@ class ResultsPanel(QWidget):
             # through `sort_by`.
             self.items.header().setSortIndicator(column, direction)
             self.items.setSortingEnabled(True)
+        else:
+            # **`QTreeView.setSortingEnabled(False)` also makes the header
+            # unclickable**, which is not in its name and is what made
+            # document order mean *unsortable* rather than *unsorted until
+            # you click*. It undoes the constructor's `setSectionsClickable`
+            # on the first run, so `sectionClicked` never fires and `sort_by`
+            # — which exists for exactly this case — can never run. Doitsu
+            # asked for header sorting on a panel that already had it under
+            # the other two settings (MobileRead 374940 #28); this is why he
+            # could not find it.
+            #
+            # The indicator stays hidden on purpose: nothing is sorted yet,
+            # and an arrow over a column would say otherwise. `sort_by`
+            # brings it back with the sort.
+            self.items.header().setSectionsClickable(True)
         for width in range(COL_MESSAGE):
             self.items.resizeColumnToContents(width)
 
