@@ -14,8 +14,17 @@ progress bar, a cancel button and a log, and leaves calibre usable while it
 runs. A modal dialog would take the application away for ten minutes and give
 nothing back for it.
 
-Two things about `ThreadedJob` that its docstring gets slightly wrong, both
-read off `gui2/threaded_jobs.py` rather than assumed:
+**`ThreadedJob` calls its callback on the worker thread, and that crashed
+calibre.** `start_work` ends `self.callback(self)` inside
+`ThreadedJobWorker.run`, so a callback that builds a dialog is building a
+QWidget off the GUI thread — undefined behaviour, and in practice the whole
+application goes down. Nothing in the class says so; the only hint is a comment
+in `_cleanup` that the callback "might be a Dispatch object", and calibre's own
+callers (`gui2/email.py`) wrap theirs in `Dispatcher`, which re-emits through a
+queued signal onto the thread it was created in. So does this one now.
+
+Two more things about `ThreadedJob` that its docstring gets slightly wrong,
+both read off `gui2/threaded_jobs.py` rather than assumed:
 
   * It says the callback is not called when the user kills a job. `kill()` sets
     the abort event and marks the job killed, but the worker thread is still
@@ -31,7 +40,7 @@ from functools import partial
 
 from qt.core import QMenu, QToolButton
 
-from calibre.gui2 import error_dialog, question_dialog
+from calibre.gui2 import Dispatcher, error_dialog, question_dialog
 from calibre.gui2.actions import InterfaceAction
 from calibre.gui2.threaded_jobs import ThreadedJob
 
@@ -159,12 +168,28 @@ class EpubveriLibraryAction(InterfaceAction):
             'epubveri: checking %d book%s' % (len(jobs),
                                               '' if len(jobs) == 1 else 's'),
             func=_run_scan, args=(binary, jobs, report), kwargs={},
-            callback=self.finished, killable=True)
+            callback=self.dispatched_finish(), killable=True)
         self.gui.job_manager.run_threaded_job(job)
         self.gui.status_bar.show_message(
             'epubveri is checking %d books…' % len(jobs), 5000)
 
     # -- finishing -----------------------------------------------------------
+
+    def dispatched_finish(self):
+        """`finished`, marshalled onto the GUI thread.
+
+        **Not `self.finished`.** `ThreadedJob` calls its callback from the
+        worker thread, so passing the bound method directly builds this
+        plugin's results dialog off the GUI thread — which took calibre down
+        with it on the first real run, a 105-book scan. `Dispatcher` re-emits
+        through a queued signal onto the thread it was constructed in, and this
+        is constructed while `start` is running, which is the GUI thread.
+
+        The dispatcher is returned rather than stored because `ThreadedJob`
+        holds it: `_cleanup` drops `func`, `args` and `kwargs` and deliberately
+        keeps `callback` for exactly this reason.
+        """
+        return Dispatcher(self.finished)
 
     def finished(self, job):
         report = job.result if job.result is not None else None

@@ -624,6 +624,24 @@ class ActionTests(unittest.TestCase):
         self.assertEqual(searched, ['marked:"=epubveri"'])
         self.assertIn('2 books', messages[0])
 
+    def test_the_job_callback_is_marshalled_to_the_gui_thread(self):
+        """The crash, pinned.
+
+        `ThreadedJob` calls its callback from the worker thread — `start_work`
+        ends `self.callback(self)` inside `ThreadedJobWorker.run`. `finished`
+        builds a dialog, so passed as a bare bound method it builds a QWidget
+        off the GUI thread and takes calibre down. It did, on the first real
+        run. `Dispatcher` is calibre's own answer (`gui2/email.py` does the
+        same) and this asserts it is still there.
+        """
+        qt_app()
+        import calibre_plugins.epubveri_library.action as action
+        from calibre.gui2 import Dispatcher
+
+        stub = type('Stub', (), {'finished': lambda self, job: None})()
+        callback = action.EpubveriLibraryAction.dispatched_finish(stub)
+        self.assertIsInstance(callback, Dispatcher)
+
     def test_the_apis_it_calls_exist(self):
         """Each of these was checked against calibre 9.14's source once. This
         makes the next calibre the thing that tells us, rather than a user."""
