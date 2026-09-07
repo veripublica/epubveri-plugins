@@ -1,4 +1,4 @@
-# epubveri library check — the scan itself, and how its findings are grouped
+# epubveri library — the scan itself, and how its findings are grouped
 # Copyright (C) 2026 Baris Kayadelen
 #
 # This program is free software: you can redistribute it and/or modify it

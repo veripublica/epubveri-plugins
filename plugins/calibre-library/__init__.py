@@ -1,4 +1,4 @@
-# epubveri library check for calibre — plugin declaration
+# epubveri library for calibre — plugin declaration
 # Copyright (C) 2026 Baris Kayadelen
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -11,7 +11,7 @@
 
 from calibre.customize import InterfaceActionBase
 
-PLUGIN_NAME = 'epubveri library check'
+PLUGIN_NAME = 'epubveri library'
 PLUGIN_VERSION_TUPLE = (0, 1, 0)
 PLUGIN_VERSION = '.'.join(str(part) for part in PLUGIN_VERSION_TUPLE)
 
@@ -32,6 +32,15 @@ class EpubveriLibraryPlugin(InterfaceActionBase):
     separately. They share the validator binary and nothing else.
     """
 
+    #: **This string is calibre's identity key for the action**, not just a
+    #: label: `gprefs['action-layout-*']` stores it, so renaming it orphans
+    #: every placement a user already has and calibre offers the placement
+    #: dialog again. The orphaned entries are inert — `bars.py` skips a name
+    #: it does not know — but they stay in the config until removed by hand.
+    #: Worth knowing before the next rename.
+    #:
+    #: Not "epubveri library check": `check` is the word in `epubcheck`, which
+    #: is W3C's mark and one this project does not imitate.
     name = PLUGIN_NAME
     version = PLUGIN_VERSION_TUPLE
     author = 'Baris Kayadelen (veripublica)'

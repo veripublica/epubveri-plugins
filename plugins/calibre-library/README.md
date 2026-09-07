@@ -1,11 +1,14 @@
-# epubveri library check — a calibre plugin
+# epubveri library — a calibre plugin
 
 Validate a **whole calibre library** with [epubveri](https://github.com/veripublica/epubveri),
 a fast, JVM-free EPUB validator, and see which defects recur across it.
 
-This is the *library* plugin. There is a separate **editor** plugin in this
-repository for Edit Book, and the two work together: this one answers **which**
-books have a problem, that one answers **what** the problem is.
+This is the *library* plugin — it appears in calibre's main window as
+**Validate library**. There is a separate **editor** plugin in this repository
+for Edit Book (**Validate with epubveri**), and the two work together: this one
+answers **which** books have a problem, that one answers **what** the problem
+is. They are one product on two surfaces, not two products: same binary, same
+findings, same message ids.
 
 > **Status: 0.1.0.** It has run on calibre 9.14 on macOS and nowhere else.
 > `minimum_calibre_version` is 6.0 because that is the oldest release it can
@@ -42,8 +45,10 @@ place.
 
 ## Using it
 
-* **epubveri** in the toolbar repeats whichever scope you used last. Its menu
-  offers **the whole library** or **the selected books**.
+* **Validate library** in the toolbar opens a menu: **the whole library** or
+  **the selected books**. The button never starts a scan by itself — nothing
+  on it would say whether it was about to check three books or three thousand,
+  and being wrong about that costs ten minutes.
 * The scan runs as a background job. calibre stays usable, the Jobs panel shows
   progress, and **cancelling still shows what it found** — a scan of three
   thousand books takes about ten minutes and is not thrown away by a change of

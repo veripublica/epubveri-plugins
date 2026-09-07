@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# epubveri library check for calibre — package this plugin
+# epubveri library for calibre — package this plugin
 # Copyright (C) 2026 Baris Kayadelen
 #
 # This program is free software: you can redistribute it and/or modify it

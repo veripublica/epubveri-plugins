@@ -1,4 +1,4 @@
-# epubveri library check — the report window
+# epubveri library — the report window
 # Copyright (C) 2026 Baris Kayadelen
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -82,7 +82,7 @@ class ResultsDialog(QDialog):
         self.gui = gui
         self.report = report
         self.on_show_books = on_show_books
-        self.setWindowTitle('epubveri library check')
+        self.setWindowTitle('epubveri library')
         self.resize(900, 560)
 
         layout = QVBoxLayout(self)

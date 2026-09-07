@@ -1,4 +1,4 @@
-# Changelog — epubveri library check for calibre
+# Changelog — epubveri library for calibre
 
 ## [0.1.0] — unreleased
 

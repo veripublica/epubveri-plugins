@@ -1,4 +1,4 @@
-# epubveri library check — the library-view action
+# epubveri library — the library-view action
 # Copyright (C) 2026 Baris Kayadelen
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -79,7 +79,13 @@ class EpubveriLibraryAction(InterfaceAction):
     #: registers it with no default binding, which is what we want — a
     #: ten-minute scan does not deserve a key combination of our choosing, but
     #: someone who runs it daily should be able to pick one.
-    action_spec = ('epubveri', None,
+    #: **A verb phrase, not the brand.** calibre's toolbar row is all verbs —
+    #: Add books, Edit metadata, Convert books, Remove books, Tweak ePub — and
+    #: a bare "epubveri" sat wrong among them *and* read as the same thing as
+    #: the editor plugin, whose button says "Validate with epubveri". Same
+    #: verb, different object; the brand is carried by the icon and by the
+    #: tooltip, which is where a user goes when the label is not enough.
+    action_spec = ('Validate library', None,
                    'Validate this library with epubveri', ())
 
     #: **Where calibre may offer to put this, and three of these are

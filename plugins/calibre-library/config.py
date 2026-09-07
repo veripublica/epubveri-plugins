@@ -1,4 +1,4 @@
-# epubveri library check — preferences
+# epubveri library — preferences
 # Copyright (C) 2026 Baris Kayadelen
 #
 # This program is free software: you can redistribute it and/or modify it

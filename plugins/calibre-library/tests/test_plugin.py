@@ -1,4 +1,4 @@
-# epubveri library check — tests
+# epubveri library — tests
 # Copyright (C) 2026 Baris Kayadelen
 #
 # This program is free software: you can redistribute it and/or modify it
@@ -641,6 +641,34 @@ class ActionTests(unittest.TestCase):
         stub = type('Stub', (), {'finished': lambda self, job: None})()
         callback = action.EpubveriLibraryAction.dispatched_finish(stub)
         self.assertIsInstance(callback, Dispatcher)
+
+    def test_the_button_says_what_it_does_not_who_made_it(self):
+        """The label was a bare "epubveri" and that was the whole complaint.
+
+        calibre's toolbar row is verbs — Add books, Edit metadata, Convert
+        books, Remove books, Tweak ePub — and the editor plugin's button says
+        "Validate with epubveri". A bare brand name sat wrong among the first
+        and was indistinguishable from the second.
+        """
+        import calibre_plugins.epubveri_library.action as action
+        label = action.EpubveriLibraryAction.action_spec[0]
+        self.assertEqual(label, 'Validate library')
+        self.assertNotEqual(label.lower(), 'epubveri')
+        # The brand still has somewhere to live: the tooltip.
+        self.assertIn('epubveri', action.EpubveriLibraryAction.action_spec[2])
+
+    def test_the_plugin_name_cannot_collide_with_the_editor_plugin(self):
+        """`name` is calibre's identity key, not a caption.
+
+        `gprefs['action-layout-*']` stores it, and two plugins answering to one
+        name would fight over every placement. It is also what a rename
+        orphans, which is why this is pinned rather than left to care.
+        """
+        from calibre_plugins.epubveri_library import PLUGIN_NAME
+        self.assertEqual(PLUGIN_NAME, 'epubveri library')
+        self.assertNotEqual(PLUGIN_NAME, 'epubveri')
+        # `check` is the word in `epubcheck`, W3C's mark.
+        self.assertNotIn('check', PLUGIN_NAME.lower())
 
     def test_the_apis_it_calls_exist(self):
         """Each of these was checked against calibre 9.14's source once. This

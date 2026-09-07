@@ -1,4 +1,4 @@
-# epubveri library check — getting a verified binary, and sharing it
+# epubveri library — getting a verified binary, and sharing it
 # Copyright (C) 2026 Baris Kayadelen
 #
 # This program is free software: you can redistribute it and/or modify it
