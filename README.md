@@ -13,7 +13,7 @@ library are the host's; the verdict is epubveri's.
 |---|---|---|
 | [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | **released — [0.3.0](https://github.com/veripublica/epubveri-plugins/releases/tag/sigil-v0.3.0)** |
 | [`plugins/calibre`](plugins/calibre) | [calibre](https://calibre-ebook.com/)'s Edit Book | **released — [0.4.2](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-v0.4.2)** |
-| [`plugins/calibre-library`](plugins/calibre-library) | calibre's **library** view | 0.1.0, unreleased |
+| [`plugins/calibre-library`](plugins/calibre-library) | calibre's **library** view | **released — [0.1.0](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-library-v0.1.0)** |
 
 **The two calibre plugins are two archives, and calibre leaves no choice about
 that**: its loader collects the plugin classes in an archive and keeps exactly
@@ -42,7 +42,7 @@ getting it wrong: [Sigil](plugins/sigil/README.md) unpacks the zip and takes
 the plugin's folder name from the filename, so **do not rename it**;
 [calibre](plugins/calibre/README.md) imports straight out of the zip and never
 unpacks it. Releases are tagged per plugin (`sigil-v0.3.0`,
-`calibre-v0.4.2`), because the two are versioned independently — the tag says
+`calibre-v0.4.2`, `calibre-library-v0.1.0`), because each is versioned independently — the tag says
 which editor a release is for, and **GitHub's "Latest" badge only means newest
 by date**, not newest for your editor.
 

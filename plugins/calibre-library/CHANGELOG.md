@@ -1,6 +1,6 @@
 # Changelog — epubveri library for calibre
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-09-07
 
 First version. Validates a calibre library with epubveri and reports the
 defects that recur across it.
