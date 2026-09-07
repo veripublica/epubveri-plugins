@@ -123,36 +123,35 @@ def make_finding(code='RSC-005', rule='opf.content_document.schema_violation',
     return Finding(item)
 
 
-class PrefsIsolation(object):
-    """Put the preferences back, because they are the *user's* preferences.
+class PinnedPrefs(object):
+    """Pin what a test needs and put it back. **The editor plugin's suite
+    already had this class, and not copying it is how this one broke.**
 
     `JSONConfig('plugins/epubveri_library')` is the live file in the running
-    calibre's config directory — there is no test instance of it. A suite that
-    writes to it changes the settings of whoever ran the tests, and it did:
-    `ConfigTests` left `show_warning` false and three dialog tests that had
-    passed a minute earlier started failing, because the dialog reads the same
-    file to decide which boxes are ticked.
+    calibre's config directory — there is no test instance of it — so a suite
+    that writes to it changes the settings of whoever ran the tests. It did:
+    `ConfigTests` left `show_warning` false, and three dialog tests that had
+    passed a minute earlier failed, because the dialog reads the same file to
+    decide which boxes are ticked.
 
-    Two things went wrong at once and only one of them was the test. Tests that
-    share mutable global state pass or fail on their **order**, which changed
-    the moment a test was added; and a suite with a side effect on the machine
-    it runs on is a suite people stop running.
+    Two things went wrong at once and only one of them was the leak. Tests
+    sharing mutable global state pass or fail on their **order**, and the order
+    changed the moment a test was added — so the failure arrived attached to an
+    innocent commit. Same name and same shape as the editor plugin's, so a
+    reader of either suite meets one convention.
     """
 
     KEYS = ('show_warning', 'show_usage', 'show_advisory', 'autoupdate',
             'scope')
 
     def setUp(self):
-        self._saved = {key: cfg.prefs.get(key) for key in self.KEYS}
+        self._saved = {key: cfg.prefs[key] for key in self.KEYS}
         for key in self.KEYS:
             cfg.prefs[key] = cfg.prefs.defaults[key]
 
     def tearDown(self):
         for key, value in self._saved.items():
-            if value is None:
-                cfg.prefs.pop(key, None)
-            else:
-                cfg.prefs[key] = value
+            cfg.prefs[key] = value
 
 
 _app = None
@@ -445,7 +444,7 @@ class InstallRecordTests(unittest.TestCase):
         self.assertIn('40 days', install.stale_note())
 
 
-class DialogTests(PrefsIsolation, unittest.TestCase):
+class DialogTests(PinnedPrefs, unittest.TestCase):
 
     def _dialog(self, report):
         qt_app()
@@ -601,7 +600,7 @@ class ActionTests(unittest.TestCase):
         self.assertTrue(hasattr(Main, 'job_exception'))
 
 
-class ConfigTests(PrefsIsolation, unittest.TestCase):
+class ConfigTests(PinnedPrefs, unittest.TestCase):
 
     def test_errors_and_fatals_cannot_be_switched_off(self):
         """A report that can be configured to hide what decides a verdict is
