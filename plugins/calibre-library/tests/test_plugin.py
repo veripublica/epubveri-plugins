@@ -670,6 +670,19 @@ class ActionTests(unittest.TestCase):
         # `check` is the word in `epubcheck`, W3C's mark.
         self.assertNotIn('check', PLUGIN_NAME.lower())
 
+    def test_it_is_listed_beside_the_editor_plugin(self):
+        """One product, one heading — the owner's call, and easy to lose.
+
+        calibre groups Preferences / Plugins by `plugin.type`, which a base
+        class normally supplies; an `InterfaceActionBase` would land under
+        "User interface action", two headings from its sibling. Nothing
+        functional turns on the value, so nothing but this test would notice
+        it reverting.
+        """
+        from calibre.customize import EditBookToolPlugin
+        from calibre_plugins.epubveri_library import EpubveriLibraryPlugin
+        self.assertEqual(EpubveriLibraryPlugin.type, EditBookToolPlugin.type)
+
     def test_the_apis_it_calls_exist(self):
         """Each of these was checked against calibre 9.14's source once. This
         makes the next calibre the thing that tells us, rather than a user."""

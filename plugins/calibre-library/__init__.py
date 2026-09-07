@@ -9,7 +9,7 @@
 # GPL-3 is not a choice here as it is for the Sigil plugin: this one imports
 # calibre's own modules at runtime, and calibre is GPL-3.
 
-from calibre.customize import InterfaceActionBase
+from calibre.customize import EditBookToolPlugin, InterfaceActionBase
 
 PLUGIN_NAME = 'epubveri library'
 PLUGIN_VERSION_TUPLE = (0, 1, 0)
@@ -42,6 +42,27 @@ class EpubveriLibraryPlugin(InterfaceActionBase):
     #: Not "epubveri library check": `check` is the word in `epubcheck`, which
     #: is W3C's mark and one this project does not imitate.
     name = PLUGIN_NAME
+    #: **Listed beside its sibling rather than by its own machinery** (owner,
+    #: 2026-09-07). calibre groups Preferences / Plugins by `plugin.type`,
+    #: which normally comes from the base class — so this one would sit under
+    #: "User interface action" and the editor plugin under "Edit book tool",
+    #: two headings apart. To a user they are one product whose only
+    #: difference is that one checks a book and the other a library, and both
+    #: run the same epubveri; the list should say that.
+    #:
+    #: The cost, stated because it is real: this plugin never appears in Edit
+    #: Book, so the heading describes where its *sibling* lives, not where it
+    #: does. Weighed against two headings apart, the owner chose adjacency.
+    #:
+    #: **Nothing functional turns on `type`** — checked, all three uses in
+    #: calibre 9.14 are cosmetic: the "installed under X" message
+    #: (`plugin_updater.py`), the `--list-plugins` printout, and the key under
+    #: which the config dialog remembers its size (`customize/__init__.py`),
+    #: which resets once and never again.
+    #:
+    #: Taken from the class rather than typed as a literal, so it follows
+    #: calibre if the wording ever changes.
+    type = EditBookToolPlugin.type
     version = PLUGIN_VERSION_TUPLE
     author = 'Baris Kayadelen (veripublica)'
     supported_platforms = ['windows', 'osx', 'linux']
