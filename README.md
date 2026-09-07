@@ -5,14 +5,23 @@ EPUB file conforms to the specification** — the job epubcheck does, in pure
 Rust with no JVM. It reads a book and reports what is wrong with it. **It never
 changes anything.**
 
-These are plugins that run it inside the editors people already use, so
-validating the book you are working on is a menu item instead of a terminal.
-The editing is the editor's; the verdict is epubveri's.
+These are plugins that run it inside the programs people already use, so
+validating a book is a menu item instead of a terminal. The editing and the
+library are the host's; the verdict is epubveri's.
 
 | plugin | for | status |
 |---|---|---|
 | [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | **released — [0.3.0](https://github.com/veripublica/epubveri-plugins/releases/tag/sigil-v0.3.0)** |
 | [`plugins/calibre`](plugins/calibre) | [calibre](https://calibre-ebook.com/)'s Edit Book | **released — [0.4.2](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-v0.4.2)** |
+| [`plugins/calibre-library`](plugins/calibre-library) | calibre's **library** view | 0.1.0, unreleased |
+
+**The two calibre plugins are two archives, and calibre leaves no choice about
+that**: its loader collects the plugin classes in an archive and keeps exactly
+one (`ans = plugin_classes[0]`), and it keys its table by the import name. An
+Edit Book tool and a library action cannot travel together. They are worth
+having both — the library one answers *which* books have a problem, the editor
+one answers *what* it is, and double-clicking a flagged book moves from the
+first answer to the second. They share the validator binary and nothing else.
 
 **Each plugin has its own README, its own changelog and its own version.**
 Start there: this file is only about the repository.
@@ -46,6 +55,7 @@ epubveri's own releases and **verifies it against that release's
 plugins/          the products — one folder per editor
   sigil/            README, CHANGELOG, its own client/, tests, build.py
   calibre/          the same shape, independently versioned
+  calibre-library/  calibre's library view; shares only the binary with the above
 LICENSE           GPL-3.0-only, for everything here
 ```
 
