@@ -114,17 +114,36 @@ FOLD_TRI = [(41.0, 2.0), (54.0, 15.0), (41.0, 15.0)]
 TICK_PTS = [(19.0, 33.0), (28.0, 43.0), (45.0, 22.0)]
 TICK_WIDTH = 7.0
 
-#: The library container: three sheets, each with its own ink outline, the
-#: front one carrying the glyph. **Three rather than two because the message is
-#: "many", and the outlines are what make three legible at all** — the same
-#: stack drawn in one flat colour was indistinguishable from a single sheet at
-#: 16 px, which is what killed the earlier teal attempt. Each sheet steps up
-#: and left; the scale is the largest that keeps three sheets plus their
-#: outlines inside the grid.
-STACK_SHEETS = 3
-STACK_SCALE = 0.83
-STACK_FRONT = (8.0, 7.5)
-STACK_STEP = (-6.0, -3.0)
+#: The library container: a **book**, drawn in calibre's own idiom.
+#:
+#: The library plugin lives only in calibre, and calibre's toolbar is a row of
+#: books — Add books, Get books, Remove books — each a flat coloured cover with
+#: a white page block behind it, a short rule near the top, and a dark glyph of
+#: the same hue knocked into the middle. Ours is that construction with our
+#: yellow and our monogram, so it sits in the row instead of on top of it.
+#:
+#: **Measured off `add_book.png` rather than eyeballed**, and halved onto this
+#: 64 grid: cover x 17-100 / y 14-126, page block x 17-109 / y 3-121 with a
+#: ~5px outline, rule x 34-83 / y 27-32, glyph centred at 45.7% across and
+#: 68.4% down. Two readings were wrong before the numbers settled it — the
+#: white was twice calibre's width because it had been drawn out to the
+#: block's *outer* edge with the outline added outside that.
+#:
+#: **This container drops the ink outline on purpose, and that is a real
+#: trade.** calibre's own icons measure about 1.90:1 against a light toolbar —
+#: they do not separate from the ground either, and rely on the dark glyph
+#: inside. Inside calibre that is the native behaviour and the right call. It
+#: is why the *page* container keeps its ink outline: that one also ships in
+#: Sigil, where any theme is possible and 6.71:1 is the point.
+BOOK_DARK = (0x4a, 0x35, 0x03)     #: the body colour taken down, calibre-style
+BOOK_PAPER = (0xff, 0xff, 0xff)    #: the pages behind the cover
+BOOK_COVER = (8.5, 6.8, 50.0, 63.0)
+BOOK_PAGES = (10.6, 4.5, 52.4, 58.4)     #: the white itself, not its outline
+BOOK_PAGE_OUTLINE = 2.1                  #: drawn outside it, flush left
+BOOK_RULE = (17.0, 13.4, 41.5, 16.4)
+BOOK_RADIUS = 1.2
+BOOK_GLYPH = (29.25, 43.75)              #: where the monogram sits
+BOOK_GLYPH_SCALE = 0.85
 
 #: The Sigil copy. Built from the constants above rather than kept by hand, so
 #: the vector and the raster cannot drift; `MARK`'s scale and origin appear
@@ -260,12 +279,59 @@ def _sheet(scale, origin, glyph=False):
 #: grid, so the drawing itself is the one that has always been here.
 MARK = [_sheet(0.92, (2.6, 2.5), glyph=True)]
 
-#: Three sheets: the library checker.
-STACK = [_sheet(STACK_SCALE,
-                (STACK_FRONT[0] + STACK_STEP[0] * i,
-                 STACK_FRONT[1] + STACK_STEP[1] * i))
-         for i in range(STACK_SHEETS - 1, 0, -1)]
-STACK.append(_sheet(STACK_SCALE, STACK_FRONT, glyph=True))
+def _rrect(x0, y0, x1, y1, radius, grow=0.0):
+    """A rounded rectangle, optionally dilated — the book is built from four."""
+    X0, Y0, X1, Y1 = x0 - grow, y0 - grow, x1 + grow, y1 + grow
+    r = max(0.01, radius + grow)
+
+    def at(x, y):
+        cx, cy = (X0 + X1) / 2, (Y0 + Y1) / 2
+        hx, hy = (X1 - X0) / 2 - r, (Y1 - Y0) / 2 - r
+        qx, qy = abs(x - cx) - hx, abs(y - cy) - hy
+        if qx <= 0 or qy <= 0:
+            return max(qx, qy) <= r
+        return math.hypot(qx, qy) <= r
+
+    return at
+
+
+def _glyph_at(cx, cy, scale):
+    """The monogram, moved and scaled into a container that is not the page.
+
+    The tick's own coordinates are the page's, so a container with different
+    proportions places it by transform rather than by redrawing it — which is
+    the whole reason glyph and container are separate.
+    """
+    def at(x, y):
+        return _in_tick((x - cx) / scale + 32.0, (y - cy) / scale + 32.5)
+
+    return at
+
+
+def _book():
+    """calibre's book, in our colours, carrying our monogram."""
+    cover = _rrect(*BOOK_COVER, BOOK_RADIUS)
+    pages = _rrect(*BOOK_PAGES, BOOK_RADIUS)
+    edge = _rrect(*BOOK_PAGES, BOOK_RADIUS, BOOK_PAGE_OUTLINE)
+    rule = _rrect(*BOOK_RULE, 1.0)
+    glyph = _glyph_at(BOOK_GLYPH[0], BOOK_GLYPH[1], BOOK_GLYPH_SCALE)
+
+    def at(x, y):
+        if cover(x, y):
+            if glyph(x, y) or rule(x, y):
+                return BOOK_DARK
+            return PAGE
+        if pages(x, y):
+            return BOOK_PAPER
+        if edge(x, y):
+            return PAGE
+        return None
+
+    return [at]
+
+
+#: The library checker: one book, calibre's shape.
+BOOK = _book()
 
 
 def _pixels(mark, size, samples=6):
@@ -321,9 +387,10 @@ def main():
         print("%s  (%d bytes)" % (png, write_png(png)))
     # No SVG for this one: calibre reads only the PNG out of the zip, and a
     # second vector file with no consumer is a third copy to keep in step.
-    # This file is the source of the drawing either way.
+    # This file is the source of the drawing either way. It is also the only
+    # mark that never reaches Sigil, which is what lets it be calibre-native.
     png = os.path.join(CALIBRE_LIBRARY, "plugin.png")
-    print("%s  (%d bytes)" % (png, write_png(png, mark=STACK)))
+    print("%s  (%d bytes)" % (png, write_png(png, mark=BOOK)))
     return 0
 
 
