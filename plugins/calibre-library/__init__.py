@@ -45,10 +45,21 @@ class EpubveriLibraryPlugin(InterfaceActionBase):
     version = PLUGIN_VERSION_TUPLE
     author = 'Baris Kayadelen (veripublica)'
     supported_platforms = ['windows', 'osx', 'linux']
+    #: **The description carries the cross-reference, because the category
+    #: cannot.** calibre groups the plugin list by `plugin.type`, which comes
+    #: from the base class and says *where in calibre a plugin works* — this
+    #: one is a user-interface action, its sibling is an Edit Book tool, and
+    #: they land under different headings for a true reason. Forcing them
+    #: together by overriding `type` is one line and breaks nothing, but it
+    #: would file a plugin that never appears in Edit Book under "Edit book
+    #: tools". So each names the other instead; the list's search box does the
+    #: rest, since both begin with `epubveri`.
     description = (
         'Validate a whole calibre library with epubveri, a fast JVM-free EPUB '
-        'validator, and report which defects recur across it. Downloads and '
-        'verifies the epubveri binary on first use; nothing else is installed.'
+        'validator, and report which defects recur across it. Its companion, '
+        'the "epubveri" Edit book tool, validates the one book you are '
+        'editing. Downloads and verifies the epubveri binary on first use; '
+        'nothing else is installed.'
     )
     #: Same reasoning as the editor plugin's: `qt.core` arrived with calibre 6,
     #: so 6.0 is the oldest release this can load on at all. It is not a claim
