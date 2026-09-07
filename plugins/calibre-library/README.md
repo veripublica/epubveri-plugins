@@ -17,7 +17,7 @@ findings, same message ids.
 ## What it shows you, and why it is not a list of books
 
 The obvious report is a list of books with an error count beside each. That
-shape was measured against a real 474-book library and dropped, for three
+shape was built first, measured against a real library and dropped, for three
 reasons that hold for any library:
 
 * A **won't open / fatal** column would always be empty. epubveri deliberately
@@ -31,12 +31,13 @@ reasons that hold for any library:
   invalid, and a third of those by one or two findings. "Half your library is
   invalid" teaches nobody anything.
 
-So the report is **one row per defect**, ordered by how many books carry it:
+So the report is **one row per defect**, ordered by how many books carry it —
+sketched here, since the rows and the numbers are your library's own:
 
 | Message | What it says | Severity | Books | Findings |
 |---|---|---|---|---|
-| RSC-005 | element "div" is not allowed here | ERROR | 181 | 8 442 |
-| OPF-003 | resource is not declared in the manifest | ERROR | 44 | 61 |
+| RSC-005 | element "…" is not allowed here | ERROR | … | … |
+| OPF-003 | resource is not declared in the manifest | ERROR | … | … |
 
 Understand one row, fix hundreds of books. Select a row and **Show affected
 books** marks them and filters the library view to them; double-clicking a book
