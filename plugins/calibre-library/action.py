@@ -71,8 +71,37 @@ JOB_TYPE = 'epubveri_library_scan'
 class EpubveriLibraryAction(InterfaceAction):
 
     name = PLUGIN_NAME
+    #: `(text, icon, tooltip, shortcut)`. The icon is set in `genesis` from the
+    #: zip instead — `action_spec`'s slot names one of calibre's own icons, not
+    #: a plugin resource. The shortcut is an **empty tuple, not None**: None
+    #: registers no shortcut at all, so the action never appears under
+    #: Preferences / Keyboard and a user cannot bind one; an empty tuple
+    #: registers it with no default binding, which is what we want — a
+    #: ten-minute scan does not deserve a key combination of our choosing, but
+    #: someone who runs it daily should be able to pick one.
     action_spec = ('epubveri', None,
-                   'Validate this library with epubveri', None)
+                   'Validate this library with epubveri', ())
+
+    #: **Where calibre may offer to put this, and three of these are
+    #: correctness rather than taste.** On installing a plugin calibre shows
+    #: `ChoosePluginToolbarsDialog` listing every location this does not
+    #: forbid, so an entry here is the only way to keep the action out of a
+    #: place it does not belong.
+    #:
+    #: The device locations are excluded because `_book_ids('selection')`
+    #: reads `gui.library_view.selectionModel()`, which still holds the
+    #: **library's** selection while a device view is showing. Invoked from a
+    #: device context menu the action would quietly check books the user
+    #: cannot see. Reaching for `current_view()` instead would not help: books
+    #: on a device are not in the library database and there is nothing here
+    #: to scan.
+    #:
+    #: The search bar is excluded because it is a row of search controls, not
+    #: a place for a ten-minute job.
+    dont_add_to = frozenset([
+        'toolbar-device', 'menubar-device', 'context-menu-device',
+        'searchbar',
+    ])
     popup_type = QToolButton.ToolButtonPopupMode.MenuButtonPopup
     action_type = 'current'
 
@@ -202,6 +231,9 @@ class EpubveriLibraryAction(InterfaceAction):
             return self.gui.job_exception(
                 job, dialog_title='epubveri could not finish')
 
+        # Kept even when there is nothing to report: a clean library can still
+        # hold books with no EPUB, and that menu item reads this.
+        self.last_report = report
         if not report.groups and not report.unreadable:
             from calibre.gui2 import info_dialog
             return info_dialog(
@@ -236,10 +268,64 @@ class EpubveriLibraryAction(InterfaceAction):
                                   '' if len(book_ids) == 1 else 's', label),
             5000)
 
+    def show_last_report(self):
+        """The report again, without re-reading a single book.
+
+        A ten-minute scan whose window closes is a ten-minute scan lost, and
+        the closing is one stray click. This is the whole of the answer: the
+        report object is still in memory, and rebuilding the dialog over it
+        costs nothing. It does not survive calibre restarting, which the menu
+        item does not pretend otherwise about — it simply is not there when
+        there is nothing to show.
+        """
+        if self.last_report is None:
+            return
+        dialog = ResultsDialog(self.gui, self.last_report, self.show_books)
+        dialog.exec()
+
+    def show_books_without_epub(self):
+        """The books a scan could not look at.
+
+        The summary line counts them, which is honest but not actionable —
+        "12 without an EPUB" leaves the user to find out which twelve. They are
+        the books most likely to want attention, since a missing format is
+        usually a conversion that never happened.
+        """
+        report = self.last_report
+        if not report or not report.no_format:
+            return
+        self.show_books({r.book_id for r in report.no_format}, 'no EPUB')
+
+    def clear_marks(self):
+        """Remove only our own marks.
+
+        `set_marked_ids` replaces the whole map, so clearing by handing it an
+        empty one would throw away marks another plugin or the user had made.
+        Ours are the ones whose text is `MARK_TEXT`.
+        """
+        db = self.gui.current_db
+        ours = self._marked_ids()
+        if not ours:
+            return
+        remaining = {book_id: text for book_id, text
+                     in db.data.marked_ids.items() if book_id not in ours}
+        db.data.set_marked_ids(remaining)
+        if str(self.gui.search.text()).startswith('marked:'):
+            self.gui.search.set_search_string('')
+        self.gui.status_bar.show_message(
+            'cleared %d epubveri mark%s'
+            % (len(ours), '' if len(ours) == 1 else 's'), 5000)
+
     def library_changed(self, db):
-        # Marks belong to the library they were made in; leaving them behind
-        # would make `marked:epubveri` mean nothing in the new one.
-        pass
+        """A report is about the library it was made in.
+
+        Its rows carry book ids, and an id means a different book in another
+        library — so *Show affected books* on a stale report would mark
+        whatever happened to share those numbers. Dropping it is the only
+        honest thing to do, and it is why this hook is implemented rather than
+        left as the base class's no-op.
+        """
+        self.last_report = None
 
 
 def _run_scan(binary, jobs, report, abort=None, log=None, notifications=None):
