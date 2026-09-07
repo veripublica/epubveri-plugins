@@ -20,7 +20,10 @@ defects that recur across it.
 - Errors and fatals are always ranked; warnings by default. Usage notes and
   advisory findings are fetched but not ranked unless asked for, and the window
   says how many findings the filter is hiding.
-- **The validator binary is shared with the editor plugin.** One download
-  serves both, and the record of which binary it is lives beside the binary —
-  a per-plugin record goes stale the moment the other plugin updates it, and
-  the editor plugin refuses to run a binary whose hash it does not recognise.
+- **Its own copy of the validator**, in `plugins/epubveri-library-data/`,
+  independent of the editor plugin's. Sharing one was tried first and dropped:
+  a scan holds the binary open for ten minutes, Windows does not allow a
+  running executable to be overwritten, and the other plugin's hourly update
+  check would land in the middle of that. The install record sits beside the
+  binary, so deleting the folder leaves nothing behind that describes a file
+  that is gone.

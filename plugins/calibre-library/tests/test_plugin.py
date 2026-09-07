@@ -102,13 +102,28 @@ def build_epub(path):
 
 
 def binary():
-    path = os.environ.get('EPUBVERI_BINARY')
-    if not path:
-        try:
-            path = install.binary_path()
-        except Exception:                               # noqa: BLE001
-            return None
-    return path if path and os.path.isfile(path) else None
+    """Any epubveri on this machine, for the tests that need to run one.
+
+    **Deliberately looser than the plugin itself.** In production this plugin
+    uses its own folder and nothing else — that separation is the point, and
+    `test_the_binary_folder_is_not_the_editor_plugins` holds it. A test suite
+    that insisted on the same folder would simply skip on a machine where only
+    the editor plugin has ever run, which is most of them, and silently stop
+    exercising the scan.
+    """
+    candidates = [os.environ.get('EPUBVERI_BINARY')]
+    try:
+        candidates.append(install.binary_path())
+    except Exception:                                   # noqa: BLE001
+        pass
+    from calibre.constants import config_dir
+    from calibre_plugins.epubveri_library.client import binary as bin_mod
+    candidates.append(os.path.join(config_dir, 'plugins', 'epubveri-data',
+                                   bin_mod.binary_filename()))
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    return None
 
 
 def make_finding(code='RSC-005', rule='opf.content_document.schema_violation',
@@ -392,6 +407,32 @@ class InstallRecordTests(unittest.TestCase):
         import shutil
         install.data_dir = self._real
         shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_the_binary_folder_is_not_the_editor_plugins(self):
+        """The separation, pinned.
+
+        Sharing one folder was tried and dropped: a library scan holds the
+        binary open for ten minutes and Windows will not let a running
+        executable be overwritten, so the editor plugin's hourly update check
+        could land in the middle of one. `data_dir` is stubbed for the rest of
+        this class, so the real one is read directly.
+        """
+        from calibre.constants import config_dir
+        self.assertEqual(
+            self._real(),
+            os.path.join(config_dir, 'plugins', 'epubveri-library-data'))
+
+    def test_nothing_writes_to_the_editor_plugins_preferences(self):
+        """A shim that did exactly that was removed with the sharing.
+
+        One plugin writing into another's config is the kind of thing that
+        surprises somebody a year later, so its absence is worth a test rather
+        than a memory.
+        """
+        import inspect
+        source = inspect.getsource(install)
+        self.assertNotIn("JSONConfig", source)
+        self.assertNotIn("plugins/epubveri'", source)
 
     def test_an_absent_record_reads_as_empty(self):
         self.assertEqual(install.read_record(), {})

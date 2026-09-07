@@ -21,7 +21,11 @@ one (`ans = plugin_classes[0]`), and it keys its table by the import name. An
 Edit Book tool and a library action cannot travel together. They are worth
 having both — the library one answers *which* books have a problem, the editor
 one answers *what* it is, and double-clicking a flagged book moves from the
-first answer to the second. They share the validator binary and nothing else.
+first answer to the second. **They share nothing, the validator binary
+included**: a library scan holds that binary open for ten minutes, and Windows
+does not allow a running executable to be overwritten, so one shared copy could
+be replaced out from under a scan by the other plugin's update check. Two
+copies cost 2.8 MB and remove the race.
 
 **Each plugin has its own README, its own changelog and its own version.**
 Start there: this file is only about the repository.

@@ -82,11 +82,16 @@ epubveri's own releases and **verified against that release's
 `SHA256SUMS.txt`** before anything is extracted, and its hash is checked again
 before every scan.
 
-It is **shared with the editor plugin** — both keep it in
-`<calibre config>/plugins/epubveri-data/`, so installing either one is enough,
-and an update by one is simply what the other uses. The record of which binary
-it is lives beside the binary rather than in either plugin's preferences,
-because a per-plugin record goes stale the moment the other plugin updates it.
+It lives in `<calibre config>/plugins/epubveri-library-data/`, and it is **this
+plugin's own copy** — the editor plugin keeps a separate one. That costs a
+second 2.8 MB download and buys three things: a library scan holds the binary
+open for ten minutes and **Windows does not allow a running executable to be
+overwritten**, so a shared file could be updated out from under a scan; each
+plugin stays auditable as one folder; and neither plugin ever has to be
+released in step with the other.
+
+Both plugins name the epubveri version they used, so if the two ever drift
+apart you can see it rather than having to wonder.
 
 Automatic update checks are hourly at most, never during a scan, and can be
 switched off in *Preferences → Plugins → Customize*. They cost 842 bytes.

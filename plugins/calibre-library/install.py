@@ -5,34 +5,45 @@
 # under the terms of the GNU General Public License as published by the Free
 # Software Foundation, either version 3 of the License, or (at your option)
 # any later version. See the LICENSE file at the root of this repository.
-"""Where the epubveri binary lives, and who is allowed to say what it is.
+"""Where the epubveri binary lives, and why it is this plugin's alone.
 
-**The binary is shared with the editor plugin; the record of which binary it
-is has to be shared with it too, and that is not obvious.** The editor plugin
-(0.4.2 and earlier) keeps `binary_sha256` in its own preferences and refuses to
-run anything that does not match it — a deliberate guarantee, and the right
-one when a plugin owns its copy. Two plugins over one folder break it: the
-moment either updates the binary, the other's stored hash is stale and its
-next run reports the file as tampered with and validates nothing.
+**This plugin keeps its own copy of the validator, and does not share the
+editor plugin's.** That was decided the other way first, on the grounds that
+the binary is epubveri's rather than any plugin's. Three things say otherwise,
+and the first is the one that settles it:
 
-So the record moves next to the thing it describes. `epubveri-data/install.json`
-holds the archive hash, the binary hash and the update stamps; both plugins
-read it, neither owns it, and an update by one is simply what the other reads.
+  * **A running executable cannot be replaced on Windows.** A library scan runs
+    the binary continuously for ten minutes. Share the file, and the editor
+    plugin's hourly update check can fire in the middle of that and try to
+    overwrite it — a sharing violation, reported by the code below as a network
+    problem, on the platform three quarters of these downloads go to. Two
+    folders make the race impossible rather than unlikely.
+  * **It is the rule this repository already committed to.** Every plugin here
+    is self-contained so that auditing one means reading one folder. Sharing
+    the binary broke that, and paid for it with a shim that wrote into *another
+    plugin's* preferences file to keep it working.
+  * **It keeps the editor plugin out of it entirely.** No coordinated release,
+    no migration, nothing to keep in step.
 
-**Back-compatibility is written, not assumed.** A user may well have editor
-plugin 0.4.2 installed today, which reads its own preferences and knows nothing
-about this file. Whenever this plugin installs or updates the binary it also
-writes the two hash keys into `plugins/epubveri.json`, so that plugin keeps
-working. That shim goes away once the editor plugin reads the shared record;
-until then, removing it means breaking somebody's editor.
+What sharing bought was one 2.8 MB download instead of two and one update check
+instead of two, neither of which is worth any of the above. Its one real
+advantage was that the two plugins could never disagree about a book, and that
+survives well enough: both name the epubveri version they used in their own
+summary line, so a divergence is visible rather than silent, and both follow
+`releases/latest` on the same hourly clock.
+
+**The install record lives beside the binary** (`install.json`) rather than in
+this plugin's preferences. It describes the file, so it belongs with the file:
+delete the folder and the two go together, and there is no way for a recorded
+hash to describe a binary that is no longer there.
 """
 
+import json
 import json
 import os
 from datetime import datetime, timedelta, timezone
 
 from calibre.constants import config_dir
-from calibre.utils.config import JSONConfig
 
 from calibre_plugins.epubveri_library.client import binary as bin_mod
 from calibre_plugins.epubveri_library.client import runner
@@ -45,9 +56,6 @@ STALE_AFTER = timedelta(days=30)
 CHECK_TIMEOUT = 5
 
 RECORD_NAME = 'install.json'
-
-#: The editor plugin's preferences file, written to only by the shim above.
-EDITOR_PREFS = 'plugins/epubveri'
 
 
 class InstallPathError(Exception):
@@ -83,12 +91,13 @@ def data_dir():
     `os.path.dirname(__file__)` is `.../plugins/epubveri_library.zip` — a file,
     and creating a directory over it fails with `[Errno 17] File exists`.
 
-    The name is `epubveri-data` and matches the editor plugin's, on purpose:
-    that is the sharing. It is not `epubveri`, because on Linux and macOS
-    Doitsu's calibre plugin writes its own copy of the binary to a **file** of
-    exactly that name, and the collision breaks both tools.
+    The name is this plugin's own. Not `epubveri-data`, which is the editor
+    plugin's — see the note at the top of this file for why the two are
+    separate. And not `epubveri`, because on Linux and macOS Doitsu's calibre
+    plugin writes its own copy of the binary to a **file** of exactly that
+    name, and the collision breaks both tools in both directions.
     """
-    path = os.path.join(config_dir, 'plugins', 'epubveri-data')
+    path = os.path.join(config_dir, 'plugins', 'epubveri-library-data')
     if os.path.isdir(path):
         return path
     if os.path.exists(path) or os.path.islink(path):
@@ -116,9 +125,10 @@ def _record_path():
 def read_record():
     """The shared install record, or an empty dict.
 
-    Read from disk every time rather than cached: the other plugin may have
-    rewritten it since, and a cached copy is precisely the stale hash this
-    file exists to prevent.
+    Read from disk every time rather than cached. Nothing else writes it now,
+    but two calibre windows share one process and one config directory, and a
+    cached copy is exactly the stale hash that would refuse to run a perfectly
+    good binary.
     """
     try:
         with open(_record_path(), encoding='utf-8') as handle:
@@ -151,28 +161,10 @@ def write_record(**fields):
     return data
 
 
-def _tell_editor_plugin(archive_sha, binary_sha):
-    """Keep editor plugin 0.4.2 working after we replace the binary.
-
-    It verifies the binary against `binary_sha256` in its own preferences and
-    runs nothing on a mismatch. Writing the two keys here is what stops a
-    library scan from silently disabling somebody's editor plugin. Harmless
-    for a version that has moved to the shared record, which will read the
-    record first.
-    """
-    try:
-        prefs = JSONConfig(EDITOR_PREFS)
-        prefs['installed_sha256'] = archive_sha
-        prefs['binary_sha256'] = binary_sha
-    except Exception:                                   # noqa: BLE001
-        pass
-
-
 def _remember(archive_sha, binary_sha):
     stamp = _stamp()
     write_record(installed_sha256=archive_sha, binary_sha256=binary_sha,
                  last_update_check=stamp, last_update_success=stamp)
-    _tell_editor_plugin(archive_sha, binary_sha)
 
 
 def integrity_failure(path):
@@ -254,7 +246,8 @@ def ensure_binary(autoupdate=True, status=None):
     **Called once per scan, not once per book.** The editor plugin validates
     one book at a time and can afford to ask on every run; a library scan of
     three thousand books would otherwise hash the binary three thousand times
-    and, worse, could replace it underneath itself half way through.
+    and, worse, could replace it underneath itself half way through — which on
+    Windows would not even be allowed, the file being open for execution.
     """
     path = binary_path()
 

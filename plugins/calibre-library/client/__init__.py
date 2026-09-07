@@ -14,11 +14,11 @@ different programs: someone auditing one plugin should be able to read one
 folder and be done.
 
 The editor plugin beside it carries these same three modules, and that is the
-convention rather than an oversight. The two are installed separately and a
-user may have either one alone, so neither can depend on the other being
-present. What they *do* share is the binary itself and the record of which one
-it is — see `install.py`, and the note there about why that record cannot live
-in either plugin's preferences.
+convention rather than an oversight. The two are installed separately, a user
+may have either one alone, and **they share nothing at all — not even the
+validator binary**; `install.py` says why, and the short version is that a
+library scan holds the binary open for ten minutes and Windows will not let
+anything overwrite a running executable.
 
 It talks to epubveri as a **subprocess over its documented JSON envelope**, and
 never links it. That keeps the licences apart (epubveri is AGPL-3.0-only OR
