@@ -54,9 +54,46 @@ _NO_FILE = " "
 #
 # On the command line `usage` findings and `--advisory` are off by default,
 # because a script diffing epubveri against epubcheck has to see the same
-# report from both. A results panel is not a diff: it has a Type column and
-# every line here says what it is, so the reader gets everything, labelled,
-# and judges for themselves. That is still the default and always will be.
+# report from both. A results panel is not a diff, so here the reader gets
+# everything, labelled, and judges for themselves. That is the default today.
+#
+# **CORRECTION (2026-09-09), because the sentence that used to be here was
+# false and it was the load-bearing half of the argument.** It read "a results
+# panel is not a diff: it has a Type column and every line here says what it
+# is". **Sigil's panel has no Type column.**
+# `ValidationResultsView.cpp` does `setColumnCount(4)` with the headers
+# **File / Line / Offset / Message**, and the severity is carried only by the
+# row's colour — `Utility::ValidationResultBrush`, which in a light theme
+# tints the background pale cyan for INFO (#E0FFFF), cream for WARNING
+# (#FFFFE6) and pale pink for ERROR (#FFE6E6), and in a dark theme colours the
+# text instead. Those three are close together, and when the panel holds a
+# *single* row there is nothing for the tint to be compared against, so it
+# carries no information at all. The calibre plugin in this repo does have a
+# real Type column; that difference is why this surfaced on Sigil first.
+#
+# **It was drift, not ignorance, which is the part worth keeping.** This same
+# repository already stated the truth twice — `README.md`'s sorting section
+# ("its columns are File, Line, Offset and Message — there is no severity
+# column") and the CHANGELOG entry beside it. Two claims about one panel,
+# written for two different purposes, and only the one being used as an
+# argument went wrong. When a fact is load-bearing for a decision, check it
+# against the places the repo already records it.
+#
+# What survives the correction: every line *is* still labelled, but by **us**
+# rather than by Sigil — `_label()` puts `ERROR`/`WARNING`/`USAGE`/`ADVISORY`
+# at the front of the Message column, which is the only column we control.
+# That is a weaker guarantee than the old sentence claimed, and it is weaker
+# in exactly the way the reports suggest: DNSB pasted a row reading
+# `USAGE OPF-088:` and described it as one error (MobileRead 374286 #283), and
+# JSWolf did the same on CSS-028 (#206/#209) after Doitsu had told him in
+# words that it was a usage message.
+#
+# **The default is NOT being changed on the strength of this.** The question
+# — what an editor panel should do with findings that are not defects — is out
+# to the thread (374286, page 20) precisely because it sets the rule for the
+# CLI, both plugins, epubsana and later integrations, and it should be decided
+# once. Until that thread answers, the behaviour below stays as it shipped.
+# What changed here is a fact, not a decision.
 #
 # What changed (Doitsu, MobileRead 374939 #21, "You can keep them enabled by
 # default") is that a reader who does not want a category can now switch it

@@ -3,6 +3,34 @@
 This plugin is versioned independently of the calibre plugin and of epubveri
 itself. The version Sigil shows comes from `plugin.xml`.
 
+## [Unreleased]
+
+- **Corrected: Sigil's results panel has no type column, and the README used
+  to imply it did.** The claim sat in two places — the plugin source, where it
+  was the stated reason for showing every severity by default, and the README
+  section on what is in the report. Sigil's `ValidationResultsView` sets four
+  columns, *File / Line / Offset / Message*, and carries the severity only as
+  a row colour: a pale tint in a light theme, coloured text in a dark one.
+  With a single row in the panel there is nothing for that tint to be compared
+  against.
+
+  What is actually true is that **this plugin** writes the label, because the
+  message is the only column a plugin controls — so `USAGE OPF-088: …` is ours,
+  not Sigil's. The README now says so, and tells a reader comparing the panel
+  against epubcheck to read the first word of each line, since epubcheck hides
+  `USAGE` without `-u` and has no `ADVISORY` at all.
+
+  **No behaviour changed.** Every edit to `plugin.py` is a comment. What an
+  editor panel should do with findings that are not defects is a live question
+  in MobileRead thread 374286, deliberately left to the thread because it sets
+  the rule for the command line, both plugins, epubsana and later
+  integrations; the default stays as it shipped until that is answered.
+
+  Worth keeping: it was drift rather than ignorance. This same repository
+  already stated the truth twice — the README's sorting section and the
+  CHANGELOG entry for 0.3.0 both say there is no severity column. Only the
+  copy being used as an argument went wrong.
+
 ## [0.3.0] — 2026-09-04
 
 - **Documented, not changed: positions in an OPF you have edited this session.**

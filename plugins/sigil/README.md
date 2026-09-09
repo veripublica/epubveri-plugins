@@ -96,8 +96,18 @@ Every advisory line carries the sentence *"epubcheck does not report this; the
 verdict is unaffected"*, so it cannot be mistaken for the two tools
 disagreeing. On the command line these are opt-in (`-u`, `--advisory`), because
 a script diffing epubveri against epubcheck has to see the same report from
-both. A results panel is not a diff — it has a Type column — so here you get
-everything and judge for yourself.
+both. A results panel is not a diff, so here you get everything and judge for
+yourself.
+
+**Where the label comes from, since it is easy to assume Sigil supplies it.**
+It does not. Sigil's results panel has four columns — *File*, *Line*,
+*Offset*, *Message* — and no type column; the severity reaches you only as the
+row's colour, which is a pale tint in a light theme and coloured text in a
+dark one. The word at the front of the message (`USAGE OPF-088: …`) is put
+there by **this plugin**, because the message is the only column a plugin
+controls. So if you are comparing this panel against epubcheck's output,
+**read the first word of each line** — epubcheck hides `USAGE` unless you pass
+`-u`, and hides `ADVISORY` always, because it has no such thing.
 
 **A book that passes epubcheck passes epubveri**, with or without any of this.
 
