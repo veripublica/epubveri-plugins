@@ -347,13 +347,26 @@ def _run_scan(binary, jobs, report, abort=None, log=None, notifications=None):
         if notifications is not None:
             notifications.put((fraction, title))
 
-    if log is not None:
-        log('epubveri %s, %d books' % (PLUGIN_VERSION, len(jobs)))
+    def write(message):
+        if log is not None:
+            log(message)
 
-    scan_books(binary, jobs, report=report, abort=abort, notify=notify)
+    # **What the first line has to carry is whatever cannot be recovered
+    # afterwards.** A scan that dies leaves only this: which plugin, which
+    # binary, and how long one book was allowed to take — the three things a
+    # reader would otherwise have to guess at from a half-finished log.
+    write('epubveri library %s, %d books' % (PLUGIN_VERSION, len(jobs)))
+    write('validator: %s' % binary)
 
-    if log is not None:
-        log('%d scanned, %d rules, %d unreadable, %.1f s'
-            % (report.scanned, len(report.groups), len(report.unreadable),
-               report.elapsed))
+    scan_books(binary, jobs, report=report, abort=abort, notify=notify,
+               log=write)
+
+    # The rate is here because it is the question people actually ask. DNSB
+    # scanned 18 000 books and reasonably wondered whether an hour and a half
+    # was normal (MobileRead 375207 #2); with this line the run answers that
+    # itself instead of being compared against someone else's machine.
+    rate = report.elapsed / report.scanned if report.scanned else 0.0
+    write('%d scanned, %d rules, %d unreadable, %.1f s, %.3f s/book'
+          % (report.scanned, len(report.groups), len(report.unreadable),
+             report.elapsed, rate))
     return report

@@ -212,8 +212,28 @@ class ScanReport:
         return out
 
 
+#: How many individual failures the log names before it stops naming them.
+#: A library where every book fails would otherwise put one line per book back
+#: into the log by the other door — and the failures are all in the report
+#: anyway, which is where a reader can page through them.
+MAX_LOGGED_FAILURES = 50
+
+
+def _log_failure(trace, logged, result):
+    """Name a book that could not be read, up to `MAX_LOGGED_FAILURES`.
+
+    A failure is worth a line even though the report already holds it: if the
+    scan later dies, the report is never rendered and the log is all there is.
+    """
+    if logged < MAX_LOGGED_FAILURES:
+        trace('could not read: %s - %s' % (result.title, result.error))
+    elif logged == MAX_LOGGED_FAILURES:
+        trace('further unreadable books are in the report, not the log')
+    return logged + 1
+
+
 def scan_books(binary, jobs, report=None, abort=None, notify=None,
-               timeout=runner.DEFAULT_TIMEOUT):
+               timeout=runner.DEFAULT_TIMEOUT, log=None):
     """Validate `jobs`, a list of `(book_id, title, epub_path)`.
 
     **One process per book, deliberately.** Batching several `-i` inputs into
@@ -231,13 +251,33 @@ def scan_books(binary, jobs, report=None, abort=None, notify=None,
     report = report if report is not None else ScanReport()
     report.requested = len(jobs)
     started = time.time()
+    # **A trace, sized by the library rather than by the book count.** DNSB
+    # scanned 18 000 books in an hour and a half (MobileRead 375207 #2, #8) and
+    # the log said two things: that it started, and — if it reached the end —
+    # that it finished. Nothing in between, so a run that died at book 12 000
+    # would have left no evidence of where. One line per book is the obvious
+    # fix and the wrong one: 18 000 lines to read, written on the job thread,
+    # inside the loop we are timing. A constant ~40 lines answers "where did
+    # it stop and how fast was it going" at any library size, and costs
+    # nothing measurable.
+    step = max(1, len(jobs) // 40)
+    failures_logged = 0
+
+    def trace(message):
+        if log is not None:
+            log(message)
 
     for index, (book_id, title, path) in enumerate(jobs):
         if abort is not None and abort.is_set():
             report.cancelled = True
+            trace('cancelled after %d of %d' % (index, len(jobs)))
             break
         if notify is not None:
             notify(float(index) / max(1, len(jobs)), title)
+        if index and index % step == 0:
+            spent = time.time() - started
+            trace('%d/%d, %.0f s, %.3f s/book' % (index, len(jobs), spent,
+                                                  spent / index))
 
         result = BookResult(book_id, title, path)
         try:
@@ -247,6 +287,7 @@ def scan_books(binary, jobs, report=None, abort=None, notify=None,
             result.error = str(exc)
             report.unreadable.append(result)
             report.books.append(result)
+            failures_logged = _log_failure(trace, failures_logged, result)
             continue
         except Exception as exc:                        # noqa: BLE001
             # A timeout, a killed process, a file that vanished between the
@@ -256,6 +297,7 @@ def scan_books(binary, jobs, report=None, abort=None, notify=None,
             result.error = '%s: %s' % (type(exc).__name__, exc)
             report.unreadable.append(result)
             report.books.append(result)
+            failures_logged = _log_failure(trace, failures_logged, result)
             continue
 
         if not report.tool_version:
@@ -265,6 +307,7 @@ def scan_books(binary, jobs, report=None, abort=None, notify=None,
             result.status = 'failed'
             result.error = envelope.error or 'epubveri could not read this file'
             report.unreadable.append(result)
+            failures_logged = _log_failure(trace, failures_logged, result)
         for finding in envelope.findings:
             report.add(finding, book_id)
         report.books.append(result)

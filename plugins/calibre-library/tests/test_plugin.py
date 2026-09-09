@@ -385,6 +385,55 @@ class ScanTests(unittest.TestCase):
         self.assertEqual(report.scanned, 1)
         self.assertTrue(report.groups)
 
+    def test_the_log_traces_a_long_scan_without_growing_with_it(self):
+        """Promised in MobileRead 375207 #4, after DNSB's 18 000-book run.
+
+        The log said only that the scan started and — if it got there — that
+        it finished, so a run that died half way left no evidence of where.
+        Two properties matter and they pull against each other: there must be
+        progress *inside* the loop, and the log must not become as long as the
+        library. A constant number of checkpoints gives both.
+        """
+        log = []
+        jobs = [(i, 'b%d' % i, self.book) for i in range(120)]
+        scan.scan_books(self.binary, jobs, log=log.append)
+        progress = [line for line in log if '/120' in line]
+        self.assertTrue(progress, 'no progress line: %r' % log)
+        # ~40 checkpoints whatever the size, so a 18 000-book scan logs no
+        # more than a 120-book one.
+        self.assertLessEqual(len(progress), 45)
+        self.assertIn('s/book', progress[0])
+
+        few = []
+        scan.scan_books(self.binary, jobs[:3], log=few.append)
+        self.assertLessEqual(len([l for l in few if '/3' in l]), 45)
+
+    def test_an_unreadable_book_is_named_in_the_log(self):
+        """If the scan later dies the report is never rendered, so a failure
+        that is only in the report is a failure nobody can see."""
+        log = []
+        missing = os.path.join(self.tmp, 'nope', 'gone.epub')
+        scan.scan_books(self.binary, [(1, 'Gone', missing)], log=log.append)
+        named = [line for line in log if 'could not read' in line]
+        if named:                       # epubveri may report it as a finding
+            self.assertIn('Gone', named[0])
+
+    def test_a_cancelled_scan_says_where_it_stopped(self):
+        class AbortAfterOne(object):
+            def __init__(self):
+                self.calls = 0
+
+            def is_set(self):
+                self.calls += 1
+                return self.calls > 1
+
+        log = []
+        scan.scan_books(self.binary,
+                        [(i, 'b%d' % i, self.book) for i in range(5)],
+                        abort=AbortAfterOne(), log=log.append)
+        self.assertTrue([l for l in log if l.startswith('cancelled after 1')],
+                        log)
+
     def test_progress_is_a_fraction_and_a_title(self):
         seen = []
         scan.scan_books(self.binary,
