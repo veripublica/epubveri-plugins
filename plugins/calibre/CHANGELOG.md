@@ -3,6 +3,41 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
+## [0.4.3] — 2026-09-09
+
+- **A chosen ground now reaches the column headings and the scroll bar, not
+  just the panel and the rows.** thiago.eec, MobileRead 374940 #30: picking
+  "Always light" under a dark calibre left the headings and the scroll bar
+  dark against a light panel, with a screenshot.
+
+  A style sheet is applied by **selector**, and 0.4.1's named only
+  `QTreeWidget` — so the tree's body obeyed it and the header and the scroll
+  bar, which are separate child widgets, never heard about it. Both are named
+  now, in the panel's own two colours rather than a third opinion about the
+  editor.
+
+  **The heading was not a Windows problem, which is what we had written
+  down.** Measured with calibre's own Qt by rendering the widget and reading
+  the pixels back: under the real macOS style the heading stays `#ececec`
+  with the palette alone, with the style sheet alone, and with both — and the
+  same under Fusion, which is what Windows draws. So it had been wrong on
+  every platform since the setting shipped, and it took a screenshot from
+  someone else's machine to find it. DNSB's guess that it was an OS
+  difference (#31) was reasonable, and so was ours, and both were wrong.
+
+  The scroll bar was the part worth checking rather than assuming: naming
+  `QScrollBar` hands the whole widget to Qt instead of the platform, which
+  usually costs you the handle. Measured under Fusion, it does not — the
+  groove goes from `#e6e6e6`, light on a dark panel, to the panel's own
+  ground, and the handle's contrast against it **rises from 1.15:1 to
+  4.07:1**.
+
+- **A new plugin icon**, the same mark the Sigil plugin now carries. The old
+  teal measured **2.00:1** on a dark editor ground; no single colour clears
+  3:1 against both mid grey and black, because the two luminance windows do
+  not overlap. Ink for light grounds and yellow for dark ones does, and the
+  worst of five grounds measured is now **6.71:1**.
+
 ## [0.4.2] — 2026-09-06
 
 - **Clicking a column heading sorts the panel under every Sort setting, not

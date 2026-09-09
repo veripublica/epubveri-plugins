@@ -905,15 +905,47 @@ class ResultsPanel(QWidget):
         # platform style paints an item view's background itself, the panel
         # around the tree changes colour and the tree does not:
         # thiago.eec saw exactly that on Windows with both grounds
-        # (MobileRead 374940 #26), where macOS under either style shows it
-        # correctly. A style sheet is drawn by Qt rather than handed to the
-        # platform theme, so it is the one instruction that arrives
-        # everywhere. It is deliberately the same two colours as the palette
-        # and not a third opinion; per-row tints and the selection colour are
-        # untouched by it, which was measured rather than assumed.
+        # (MobileRead 374940 #26). A style sheet is drawn by Qt rather than
+        # handed to the platform theme, so it is the one instruction that
+        # arrives everywhere. It is deliberately the same two colours as the
+        # palette and not a third opinion; per-row tints and the selection
+        # colour are untouched by it, which was measured rather than assumed.
+        #
+        # **Every part that is not the tree itself has to be named, and the
+        # first version named only the tree** — so the body obeyed and the
+        # header and the scroll bar did not (thiago.eec again, 374940 #30,
+        # with a screenshot). A style sheet is applied by *selector*:
+        # `QTreeWidget` matches the tree, and the header and the scroll bar
+        # are separate child widgets that it never touches.
+        #
+        # **The header was not a Windows problem, which is what the note here
+        # used to say.** Measured with calibre's own Qt, rendering the widget
+        # and reading the pixels back: under the real macOS style the header
+        # stays `#ececec` with the palette alone, with the sheet alone, and
+        # with both — and the same under Fusion, which is what Windows draws.
+        # Neither instruction reaches a `QHeaderView`; only naming it does.
+        # So the header had been wrong on every platform since the setting
+        # shipped, and only a screenshot from someone else's machine found
+        # it. DNSB's guess that it was an OS difference (#31) was reasonable
+        # and wrong, and so were we.
+        #
+        # **The scroll bar is named too, and the fear that this would ruin it
+        # was measured and did not survive.** Naming `QScrollBar` makes Qt
+        # draw the whole widget rather than the platform, which usually costs
+        # the handle. It does not here: under Fusion the groove goes from
+        # `#e6e6e6` — light, on a dark panel, which is the complaint — to the
+        # panel's own ground, and the handle's contrast against it *rises*
+        # from 1.15:1 to 4.07:1. (A first measurement said the handle
+        # vanished. It sampled a single pixel column and missed it; scanning
+        # the strip is what corrected that.) macOS cannot judge this one at
+        # all — its scroll bars are overlays that are not drawn until you
+        # scroll — so the Fusion numbers are the evidence.
         self.items.setStyleSheet(
             'QTreeWidget { background-color: %s; color: %s; }'
-            % (colours['base'], colours['text']))
+            ' QHeaderView::section { background-color: %s; color: %s; }'
+            ' QScrollBar { background: %s; }'
+            % (colours['base'], colours['text'],
+               colours['base'], colours['text'], colours['base']))
         self.setAutoFillBackground(True)
         self._ground = True
 

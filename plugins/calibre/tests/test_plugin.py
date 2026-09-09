@@ -1014,6 +1014,39 @@ class AppearanceTests(PinnedPrefs, unittest.TestCase):
         base = panel.items.palette().color(QPalette.ColorRole.Base)
         self.assertEqual(base.name(), plugin._PANEL_DARK['base'])
 
+    def test_the_header_and_scroll_bar_wear_the_chosen_ground_too(self):
+        """thiago.eec, MobileRead 374940 #30: choosing a ground turned the
+        panel and the tree body but left the header and the scroll bar in
+        calibre's theme.
+
+        A style sheet is applied by **selector**, and the first version named
+        only `QTreeWidget` — so the two child widgets it never mentions kept
+        whatever the platform gave them. The assertion is on the sheet rather
+        than on rendered pixels because a rendered colour is a fact about the
+        machine that drew it: the header comes out `#ececec` under the macOS
+        style and `#f7f7f7` under Fusion, and macOS will not draw a scroll
+        bar at all until you scroll one. What is ours, and is the same
+        everywhere, is which selectors we wrote.
+
+        Guarding all three together matters — the body was right for two
+        releases while the header was wrong on every platform, and nothing
+        failed.
+        """
+        panel = self._panel([Finding('error')], panel_theme='dark')
+        sheet = panel.items.styleSheet()
+        base = plugin._PANEL_DARK['base']
+        for selector in ('QTreeWidget', 'QHeaderView::section', 'QScrollBar'):
+            self.assertIn(selector, sheet,
+                          '%s is not named, so the ground never reaches it'
+                          % selector)
+        # ...and each of them is given the panel's own ground, not a third
+        # opinion about the editor's colours.
+        self.assertEqual(sheet.count(base), 3, sheet)
+        # It comes off with the ground, or "follow calibre" would leave the
+        # header dark for the rest of the session.
+        panel.remove_ground()
+        self.assertEqual(panel.items.styleSheet(), '')
+
     def test_auto_touches_no_palette_at_all(self):
         """Inheriting is not the same as copying today's colours into a
         palette of our own, which would then never change again."""
