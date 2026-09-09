@@ -3,7 +3,18 @@
 This plugin is versioned independently of the calibre plugin and of epubveri
 itself. The version Sigil shows comes from `plugin.xml`.
 
-## [Unreleased]
+## [0.3.1] — 2026-09-09
+
+- **A new plugin icon, and it is a pair of colours rather than one.** The old
+  mark was a teal page with a white tick, and teal `#1b5f7a` measured
+  **2.00:1** on a dark editor ground — the case DiapDealer had warned about.
+  No single colour clears 3:1 against both mid grey and black; the luminance
+  windows do not overlap. Ink for light grounds and yellow for dark ones does,
+  and the worst of five grounds measured is now **6.71:1**.
+
+  Deliberately not green, red or amber: the icon is the tool, not the verdict
+  — it looks the same whether your book is valid or broken — and those three
+  are already this plugin's severities.
 
 - **Corrected: Sigil's results panel has no type column, and the README used
   to imply it did.** The claim sat in two places — the plugin source, where it
