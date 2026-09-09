@@ -39,7 +39,6 @@ hash to describe a binary that is no longer there.
 """
 
 import json
-import json
 import os
 from datetime import datetime, timedelta, timezone
 
