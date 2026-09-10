@@ -6,16 +6,11 @@
   DNSB scanned about 18 000 books in 1 h 29 min on an idle system
   (MobileRead 375207 #2, #8) and the whole of that was one book at a time.
 
-  Measured over 120 real books on ten physical cores: 1 worker 14.38 s,
-  4 workers 4.30 s (3.3x), 8 workers 2.94 s (4.9x).
-
-  **Ten cores gave about five times the speed rather than ten, and the reason
-  is the cores rather than the disk** — measured, after an earlier draft of
-  this note asserted the opposite. Across the whole run `sys` time is half a
-  second, so nothing waits on I/O; what rises is CPU time itself, 13.9 s to
-  16.8 s for the same books. The machine is an Apple M2 Pro: six performance
-  cores and four efficiency ones. Ten *equal* cores would be expected to do
-  better, which is why nothing here caps you at what this laptop managed.
+  How much faster depends entirely on your machine, so this note does not
+  give you a number to compare yours against. Not every core is worth the
+  same — a laptop with a mix of fast and efficient cores gains noticeably less
+  than its core count suggests — and the scan is limited by the processor
+  rather than by the disk, so a slow drive is not what holds it back.
 
   The other reason is that we cannot see your machine. A **Books validated at
   the same time** control is in Preferences → Plugins → Customize, and its
@@ -29,13 +24,11 @@
   do.
 
   An estimate that also read free memory and the size of the largest books was
-  written, measured and then removed. It worked; that is why it went. Eight
-  workers over the forty largest books of a 474-book library peak at 331 MB
-  all told, and the term only began to bind below 512 MB of free memory — a
-  machine already in trouble. The library it would have protected is one of
-  large illustrated books being bulk-scanned on a small laptop, and nobody has
-  one. If that turns up, it can be built against a real library instead of a
-  guess about one.
+  written and then removed: measuring it showed a scan costs far less memory
+  than it was insuring against, and the library it would have protected — one
+  of large illustrated books, bulk-scanned on a small laptop — is one nobody
+  has reported. If yours behaves that way, say so and it can be built against
+  a real library rather than a guess about one.
 
 - **What deliberately did not change.** Cancelling still stops the scan
   handing out new books and keeps everything already done — the books in

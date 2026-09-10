@@ -161,11 +161,10 @@ class ConfigWidget(QWidget):
             _('The maximum is %d: two cores are kept for the rest of the '
               'system, including calibre itself.\n\n'
               'More is not always faster, and not every core is worth the '
-              'same: on a laptop whose cores are a mix of fast and efficient '
-              'ones, ten of them measured about five times the speed rather '
-              'than ten. If a scan is not getting quicker, or the machine '
-              'becomes uncomfortable to use while one runs, this is the '
-              'number to lower.') % cap,
+              'same — a machine that mixes fast and efficient cores gains '
+              'less than its core count suggests. If a scan is not getting '
+              'quicker, or the machine becomes uncomfortable to use while one '
+              'runs, this is the number to lower.') % cap,
             speed)
         note.setWordWrap(True)
         speed_layout.addWidget(note)
