@@ -9,7 +9,7 @@
 # GPL-3 is not a choice here as it is for the Sigil plugin: this one imports
 # calibre's own modules at runtime, and calibre is GPL-3.
 
-from calibre.customize import EditBookToolPlugin, InterfaceActionBase
+from calibre.customize import InterfaceActionBase
 
 PLUGIN_NAME = 'epubveri library'
 PLUGIN_VERSION_TUPLE = (0, 2, 0)
@@ -42,27 +42,32 @@ class EpubveriLibraryPlugin(InterfaceActionBase):
     #: Not "epubveri library check": `check` is the word in `epubcheck`, which
     #: is W3C's mark and one this project does not imitate.
     name = PLUGIN_NAME
-    #: **Listed beside its sibling rather than by its own machinery** (owner,
-    #: 2026-09-07). calibre groups Preferences / Plugins by `plugin.type`,
-    #: which normally comes from the base class — so this one would sit under
-    #: "User interface action" and the editor plugin under "Edit book tool",
-    #: two headings apart. To a user they are one product whose only
-    #: difference is that one checks a book and the other a library, and both
-    #: run the same epubveri; the list should say that.
+    #: **Its own category, after calibre's own community named it one**
+    #: (owner, 2026-09-10). This used to be forced to `EditBookToolPlugin.type`
+    #: so the two plugins would sit under one heading in Preferences /
+    #: Plugins: to a user they are one product whose only difference is that
+    #: one checks a book and the other a library, and two headings apart said
+    #: otherwise.
     #:
-    #: The cost, stated because it is real: this plugin never appears in Edit
-    #: Book, so the heading describes where its *sibling* lives, not where it
-    #: does. Weighed against two headings apart, the owner chose adjacency.
+    #: The cost was stated when that choice was made — this plugin never
+    #: appears in Edit Book, so the heading described where its *sibling*
+    #: lives — and it has now been paid. On MobileRead a moderator retitled
+    #: the thread to **[GUI Plugin] epubveri library** and Comfy.n placed it
+    #: under *Extend calibre generally* (375207 #3, #6, #7). That is the
+    #: calibre community answering the same question, and answering it the
+    #: other way: this is a GUI plugin. A Preferences list that files it under
+    #: "Edit book tool" now disagrees with the forum index a user found it in.
+    #:
+    #: So it takes the type its own base class gives it, and the two plugins
+    #: name each other in their descriptions instead — which they already did,
+    #: because the category never could.
     #:
     #: **Nothing functional turns on `type`** — checked, all three uses in
     #: calibre 9.14 are cosmetic: the "installed under X" message
     #: (`plugin_updater.py`), the `--list-plugins` printout, and the key under
     #: which the config dialog remembers its size (`customize/__init__.py`),
-    #: which resets once and never again.
-    #:
-    #: Taken from the class rather than typed as a literal, so it follows
-    #: calibre if the wording ever changes.
-    type = EditBookToolPlugin.type
+    #: which resets once and never again. That was the reason it was safe to
+    #: override, and it is the reason it is safe to stop.
     version = PLUGIN_VERSION_TUPLE
     author = 'Baris Kayadelen (veripublica)'
     supported_platforms = ['windows', 'osx', 'linux']

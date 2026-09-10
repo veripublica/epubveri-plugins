@@ -806,18 +806,45 @@ class ActionTests(unittest.TestCase):
         # `check` is the word in `epubcheck`, W3C's mark.
         self.assertNotIn('check', PLUGIN_NAME.lower())
 
-    def test_it_is_listed_beside_the_editor_plugin(self):
-        """One product, one heading — the owner's call, and easy to lose.
+    def test_it_is_listed_as_the_gui_plugin_it_is(self):
+        """It takes its own base class's category, and that is a reversal.
 
-        calibre groups Preferences / Plugins by `plugin.type`, which a base
-        class normally supplies; an `InterfaceActionBase` would land under
-        "User interface action", two headings from its sibling. Nothing
-        functional turns on the value, so nothing but this test would notice
-        it reverting.
+        Until 0.2.0 this was forced to `EditBookToolPlugin.type` so the two
+        plugins would share one heading in Preferences / Plugins — one
+        product, one place. The cost was known and written down: this plugin
+        never appears in Edit Book, so the heading named where its *sibling*
+        lived.
+
+        MobileRead settled it the other way. A moderator retitled the thread
+        **[GUI Plugin] epubveri library** and Comfy.n filed it under *Extend
+        calibre generally* (375207 #3, #6, #7) — the calibre community
+        answering the same question about the same plugin. A Preferences entry
+        saying "Edit book tool" would now disagree with the index the user
+        found it in.
+
+        Nothing functional turns on the value, which is what made the override
+        safe and what makes this test the only thing that would notice it
+        coming back.
         """
-        from calibre.customize import EditBookToolPlugin
+        from calibre.customize import EditBookToolPlugin, InterfaceActionBase
         from calibre_plugins.epubveri_library import EpubveriLibraryPlugin
-        self.assertEqual(EpubveriLibraryPlugin.type, EditBookToolPlugin.type)
+        self.assertEqual(EpubveriLibraryPlugin.type, InterfaceActionBase.type)
+        self.assertNotEqual(EpubveriLibraryPlugin.type, EditBookToolPlugin.type)
+
+    def test_each_plugin_still_names_the_other(self):
+        """What replaced the shared heading, and now the only thing joining
+        them in the list.
+
+        The category used to say "these two are one product". It does not any
+        more, so the descriptions have to — a user reading either entry should
+        learn the other exists.
+        """
+        from calibre_plugins.epubveri_library import EpubveriLibraryPlugin
+        self.assertIn('epubveri', EpubveriLibraryPlugin.description.lower())
+        self.assertTrue(
+            any(word in EpubveriLibraryPlugin.description.lower()
+                for word in ('companion', 'editor', 'edit book')),
+            EpubveriLibraryPlugin.description)
 
     def test_the_apis_it_calls_exist(self):
         """Each of these was checked against calibre 9.14's source once. This

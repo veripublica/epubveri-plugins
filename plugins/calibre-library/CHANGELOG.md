@@ -30,6 +30,21 @@
   has reported. If yours behaves that way, say so and it can be built against
   a real library rather than a guess about one.
 
+- **It is listed as the GUI plugin it is.** Its category was forced to "Edit
+  book tool" so that it would sit beside the editor plugin in Preferences →
+  Plugins — one product, one heading — with the known cost that the heading
+  named where its *sibling* lives rather than where it does.
+
+  MobileRead settled that the other way: a moderator retitled the thread
+  **[GUI Plugin] epubveri library**, and it is filed under *Extend calibre
+  generally*. That is calibre's own community answering the same question, so
+  a Preferences entry reading "Edit book tool" would now disagree with the
+  index a user found the plugin in. It takes its own category, and the two
+  plugins name each other in their descriptions instead — which the category
+  never could do anyway.
+
+  Nothing functional turns on it: all three uses in calibre are cosmetic.
+
 - **What deliberately did not change.** Cancelling still stops the scan
   handing out new books and keeps everything already done — the books in
   flight are allowed to finish and are counted rather than discarded. One
