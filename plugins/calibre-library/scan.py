@@ -323,11 +323,18 @@ def scan_books(binary, jobs, report=None, abort=None, notify=None,
     Measured on ten physical cores over 120 real books — 1 worker 14.38 s,
     4 workers 4.30 s, 8 workers 2.94 s.
 
-    `abort` is checked before each book is handed out, so cancelling a scan of
-    three thousand books stops within about one book's time and **keeps what it
-    has**. That is the whole reason this returns a report rather than raising.
-    With a pool the books already in flight are allowed to finish; they are
-    counted, not thrown away.
+    `abort` is checked before each book is handed out, so cancelling stops new
+    books starting at once and **keeps what it has** — the whole reason this
+    returns a report rather than raising.
+
+    **What it does not do is stop immediately, and with a pool that is longer
+    than it used to be.** The books already running are allowed to finish and
+    are counted, so the wait after pressing cancel is the *slowest of the
+    workers in flight*, not one average book. Measured on a real 104-book
+    library at 8 workers: cancel pressed at 1.5 s, returned at 4.2 s, 17 books
+    kept. The alternative is killing those processes and throwing away work
+    the user has already paid for, which is the trade this function exists to
+    refuse.
 
     **Order is preserved deliberately.** A pool finishes out of order, so
     `report.books` is filled by the job's own index and never appended to as
