@@ -60,6 +60,36 @@ whatever is true because Sigil is on the other end — above all that the result
 XML **parses**, since Sigil writes our message into an attribute without
 escaping it, and one unescaped quote makes Sigil display nothing at all.
 
+## Checking an epubveri release against the plugins
+
+```
+scripts/verify-release.py --local /path/to/new/epubveri   # before epubveri's tag
+scripts/verify-release.py --published                      # after it
+```
+
+**Why this exists.** Since the plugins stopped bundling a binary and started
+fetching it from epubveri's releases, an epubveri release changes running
+plugin code — every installed copy, at once, with no plugin release. All three
+`client/binary.py` files are byte-identical, so a break in the download path
+hits all three together.
+
+**The plugin test suites cannot see it.** They build their own envelope
+fixtures, which is right for testing display logic and useless here: a real
+envelope can change shape underneath a green suite. This drives the real
+binary through the real `runner`/`envelope`/`binary` code.
+
+The two modes answer different questions. `--local` diffs **what a plugin
+sees** — verdict, per-severity counts, advisory count, the `(code, severity)`
+set — between the local build and the currently-published one, so an additive
+envelope key correctly shows as no change while a moved count does not.
+`--published` drives the downloader at `releases/latest`: asset name,
+`SHA256SUMS.txt`, checksum, extraction, one real book.
+
+`--local` refuses to compare two binaries reporting the same version, and says
+whether the raw envelopes differ at all before reporting that the plugin view
+does not. A pass from an instrument that never ran is the one result worth
+nothing.
+
 ## Building a package
 
 ```
