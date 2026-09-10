@@ -1,5 +1,45 @@
 # Changelog — epubveri library for calibre
 
+## [0.2.0] — 2026-09-10
+
+- **The scan validates several books at once, and you choose how many.**
+  DNSB scanned about 18 000 books in 1 h 29 min on an idle system
+  (MobileRead 375207 #2, #8) and the whole of that was one book at a time.
+
+  Measured over 120 real books on ten physical cores: 1 worker 14.38 s,
+  4 workers 4.30 s (3.3x), 8 workers 2.94 s (4.9x). It saturates around six to
+  eight, and **ten cores gave five times the speed rather than ten** — the
+  limit is the disk and the decompression, not the processor. So a library on
+  a network share or an external drive may well do better with fewer workers,
+  which is one of the two reasons this is a setting rather than a number we
+  picked.
+
+  The other reason is that we cannot see your machine. A **Books validated at
+  the same time** control is in Preferences → Plugins → Customize, and its
+  maximum is your physical core count less two: two are kept for the rest of
+  the system, calibre included. Physical rather than logical cores, because on
+  a hyperthreaded 8-core machine the logical count is 16 and reserving two of
+  those would still leave fourteen processes fighting over eight cores.
+
+  It defaults to **Automatic**, which is computed rather than chosen — a fixed
+  default is wrong in both directions, timid on a publisher's workstation with
+  128 GB and too many on a four-core laptop with 8 GB. Automatic reads the
+  cores, the *free* memory rather than the installed memory, and the largest
+  book in the library, since a worker costs roughly the size of the book it is
+  working on. It is bounded where the measurements stopped showing a gain, so
+  a 64-core machine is not offered sixty workers for a few per cent; raise the
+  setting yourself if your disk keeps up.
+
+- **What deliberately did not change.** Cancelling still stops the scan
+  handing out new books and keeps everything already done — the books in
+  flight are allowed to finish and are counted rather than discarded. One
+  pathological archive still costs only its own timeout. And the report is
+  identical whatever the worker count: the book list is filled by each book's
+  own position rather than in the order results happen to arrive, and the rule
+  rows were already safe because their sort key ends in the rule's own code.
+  Both are asserted by tests that were checked by breaking the guarantee and
+  watching them fail.
+
 ## [0.1.1] — 2026-09-09
 
 - **A long scan leaves a trace in the job log now**, which was promised in

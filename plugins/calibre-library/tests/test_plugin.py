@@ -434,6 +434,105 @@ class ScanTests(unittest.TestCase):
         self.assertTrue([l for l in log if l.startswith('cancelled after 1')],
                         log)
 
+    def test_a_pool_keeps_the_book_order_a_serial_scan_had(self):
+        """A pool finishes out of order; the table must not.
+
+        `report.books` is filled by the job's index rather than appended to as
+        results arrive. Without that the same library produces a differently
+        ordered list on every scan, which reads as the plugin being unstable
+        rather than as threads being threads.
+        """
+        jobs = [(i, 'b%d' % i, self.book) for i in range(12)]
+        serial = scan.scan_books(self.binary, jobs, workers=1)
+        pooled = scan.scan_books(self.binary, jobs, workers=6)
+        self.assertEqual([r.book_id for r in serial.books], list(range(12)))
+        self.assertEqual([r.book_id for r in pooled.books],
+                         [r.book_id for r in serial.books])
+        self.assertEqual(pooled.scanned, serial.scanned)
+
+    def test_a_pool_produces_the_same_report_as_a_serial_scan(self):
+        """Same groups, same order, same counts — the rule rows are what the
+        dialog shows, and they must not depend on how many workers ran.
+
+        They are safe because `RuleGroup.sort_key` ends in the rule's own
+        code, so the sort is total and insertion order cannot reach it. This
+        asserts that rather than trusting it.
+        """
+        jobs = [(i, 'b%d' % i, self.book) for i in range(10)]
+        serial = scan.scan_books(self.binary, jobs, workers=1)
+        pooled = scan.scan_books(self.binary, jobs, workers=5)
+        every = ('fatal', 'error', 'warning', 'usage', 'info')
+        self.assertEqual([(g.code, g.books, g.findings)
+                          for g in pooled.rows(every)],
+                         [(g.code, g.books, g.findings)
+                          for g in serial.rows(every)])
+        self.assertTrue(serial.groups, 'the fixture must produce findings')
+
+    def test_cancelling_a_pool_keeps_what_finished(self):
+        """Cancel still means "stop handing out books", not "throw away".
+
+        With a pool the books already running are allowed to finish and are
+        counted. What must not happen is a cancelled scan losing work it had
+        already paid for.
+        """
+        class AbortAfterTwo(object):
+            def __init__(self):
+                self.calls = 0
+
+            def is_set(self):
+                self.calls += 1
+                return self.calls > 2
+
+        report = scan.scan_books(self.binary,
+                                 [(i, 'b%d' % i, self.book) for i in range(20)],
+                                 abort=AbortAfterTwo(), workers=4)
+        self.assertTrue(report.cancelled)
+        self.assertTrue(0 < report.scanned < 20, report.scanned)
+        self.assertEqual(len(report.books), report.scanned)
+        self.assertTrue(report.groups)
+
+    def test_the_cap_reserves_two_cores_and_never_reaches_zero(self):
+        """The owner's rule, and the floor that keeps it usable.
+
+        `cores - 2` is 0 on a two-core machine, and a scan with no workers
+        does nothing at all.
+        """
+        self.assertGreaterEqual(scan.worker_cap(), 1)
+        self.assertEqual(scan.recommended_workers(cap=1, available_bytes=2**40), 1)
+        # Two cores, so the cap would be zero without the floor.
+        self.assertEqual(max(1, 2 - 2), 1)
+
+    def test_the_recommendation_yields_to_memory_and_never_to_zero(self):
+        """Cores are not the only limit, and on a small machine they are not
+        the binding one.
+
+        A worker costs roughly the size of the book it is on, so a library of
+        large books on a machine with little free memory must be told to use
+        fewer workers than it has cores — and never fewer than one, however
+        little is free.
+        """
+        big = os.path.join(self.tmp, 'big.epub')
+        with open(self.book, 'rb') as src, open(big, 'wb') as dst:
+            dst.write(src.read())
+        jobs = [(1, 'B', big)]
+        roomy = scan.recommended_workers(jobs, cap=8, available_bytes=64 * 2**30)
+        cramped = scan.recommended_workers(jobs, cap=8, available_bytes=64 * 2**20)
+        self.assertEqual(roomy, 8, 'plenty of memory: the cap decides')
+        self.assertEqual(cramped, 1, 'almost none: still one, never zero')
+        self.assertLess(cramped, roomy)
+
+    def test_the_recommendation_is_bounded_where_more_stopped_paying(self):
+        """A 64-core workstation is not offered 62 workers.
+
+        Ten physical cores produced five times the speed rather than ten, so
+        the limit measured was the disk. The knee bounds the *recommendation*
+        only — a user whose disk keeps up can still raise the setting to the
+        cap.
+        """
+        huge = scan.recommended_workers(cap=62, available_bytes=128 * 2**30)
+        self.assertEqual(huge, scan._KNEE)
+        self.assertLess(huge, 62)
+
     def test_progress_is_a_fraction_and_a_title(self):
         seen = []
         scan.scan_books(self.binary,

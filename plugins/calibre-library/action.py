@@ -358,8 +358,13 @@ def _run_scan(binary, jobs, report, abort=None, log=None, notifications=None):
     write('epubveri library %s, %d books' % (PLUGIN_VERSION, len(jobs)))
     write('validator: %s' % binary)
 
+    # The user's setting, or a value worked out from this machine and this
+    # library. Resolved here rather than inside `scan_books` so the scan
+    # function stays a function of its arguments and the tests can drive it
+    # without a preferences file.
+    parallel = cfg.workers(jobs)
     scan_books(binary, jobs, report=report, abort=abort, notify=notify,
-               log=write)
+               log=write, workers=parallel)
 
     # The rate is here because it is the question people actually ask. DNSB
     # scanned 18 000 books and reasonably wondered whether an hour and a half

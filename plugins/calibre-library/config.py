@@ -23,7 +23,8 @@ re-sorts the table; it never re-validates the library.
 """
 
 from calibre.utils.config import JSONConfig
-from qt.core import QCheckBox, QGroupBox, QLabel, QVBoxLayout, QWidget
+from qt.core import (QCheckBox, QGroupBox, QHBoxLayout, QLabel, QSpinBox,
+                     QVBoxLayout, QWidget)
 
 #: Its own file. The binary and the record of which binary it is are shared
 #: with the editor plugin (see `install.py`); the settings are not, because
@@ -42,6 +43,17 @@ prefs.defaults['show_advisory'] = False
 #: The scope the dialog opens on, remembered from last time. `library` or
 #: `selection`.
 prefs.defaults['scope'] = 'library'
+
+#: How many books are validated at once. **0 means "work it out", and that is
+#: the default rather than a number.**
+#:
+#: A fixed default is wrong in both directions and there is no value that is
+#: not: four is timid on a publisher's workstation with 128 GB and too many on
+#: a four-core laptop with 8 GB. So the default computes itself from the
+#: machine *and* the library — see `scan.recommended_workers` — and the
+#: setting exists because we still cannot know whether this library sits on an
+#: NVMe or a network share, which decides whether more workers help at all.
+prefs.defaults['workers'] = 0
 
 _ON_VALUES = frozenset(['yes', 'true', 'on', '1', 'y'])
 
@@ -71,6 +83,24 @@ def severities():
 
 def show_advisory():
     return as_bool(prefs.get('show_advisory'), False)
+
+
+def workers(jobs=()):
+    """The worker count for a scan: the user's, or one computed for them.
+
+    Clamped to the cap on read rather than only on write, because the settings
+    file is editable by hand and a number typed there should not be able to
+    ask for sixty processes.
+    """
+    from calibre_plugins.epubveri_library.scan import (recommended_workers,
+                                                       worker_cap)
+    try:
+        chosen = int(prefs.get('workers') or 0)
+    except (TypeError, ValueError):
+        chosen = 0
+    if chosen <= 0:
+        return recommended_workers(jobs)
+    return max(1, min(chosen, worker_cap()))
 
 
 class ConfigWidget(QWidget):
@@ -107,6 +137,40 @@ class ConfigWidget(QWidget):
         report_layout.addWidget(self.show_advisory)
         layout.addWidget(report)
 
+        speed = QGroupBox(_('How many books at once'), self)
+        speed_layout = QVBoxLayout(speed)
+        from calibre_plugins.epubveri_library.scan import (recommended_workers,
+                                                           worker_cap)
+        cap = worker_cap()
+        row = QHBoxLayout()
+        row.addWidget(QLabel(_('Books validated at the same time:'), speed))
+        self.workers = QSpinBox(speed)
+        self.workers.setRange(0, cap)
+        # 0 is not "none" here; it is "decide for me", which is the default and
+        # wants to read as a choice rather than as an empty box.
+        self.workers.setSpecialValueText(
+            _('Automatic (%d here, now)') % recommended_workers())
+        try:
+            self.workers.setValue(min(cap, max(0, int(prefs.get('workers') or 0))))
+        except (TypeError, ValueError):
+            self.workers.setValue(0)
+        row.addWidget(self.workers)
+        row.addStretch(1)
+        speed_layout.addLayout(row)
+        note = QLabel(
+            _('The maximum is %d: two cores are kept for the rest of the '
+              'system, including calibre itself. Automatic also looks at free '
+              'memory and at the largest book in the library, since a worker '
+              'costs roughly the size of the book it is on.\n\n'
+              'More is not always faster. On the machine this was measured on, '
+              'ten cores gave five times the speed rather than ten — the limit '
+              'was the disk, not the processor — so a library on a network '
+              'share or an external drive may do better with fewer.') % cap,
+            speed)
+        note.setWordWrap(True)
+        speed_layout.addWidget(note)
+        layout.addWidget(speed)
+
         updates = QGroupBox(_('The epubveri validator'), self)
         updates_layout = QVBoxLayout(updates)
         self.autoupdate = QCheckBox(
@@ -129,3 +193,4 @@ class ConfigWidget(QWidget):
         prefs['show_usage'] = self.show_usage.isChecked()
         prefs['show_advisory'] = self.show_advisory.isChecked()
         prefs['autoupdate'] = self.autoupdate.isChecked()
+        prefs['workers'] = self.workers.value()

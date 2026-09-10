@@ -35,6 +35,7 @@ them, and opening one in Edit Book shows the findings in place.
 
 import os
 import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 from calibre_plugins.epubveri_library.client import runner
 from calibre_plugins.epubveri_library.client.envelope import (
@@ -212,6 +213,102 @@ class ScanReport:
         return out
 
 
+#: Peak resident memory one epubveri process needs, as a function of the book.
+#: Measured across the reference shelf: an 80.7 MB book peaked at 90.4 MB, a
+#: 0.9 MB book at 8.4 MB — so a fixed baseline plus about the size of the file.
+#:
+#: The floor is the second dimension. Size is not the only thing that costs:
+#: a 0.7 MB book carrying 6 859 findings peaked at 17-32 MB, because the
+#: findings themselves are held. A library of small files is therefore not as
+#: cheap as its sizes suggest, and the floor is what stops the estimate saying
+#: it is.
+_WORKER_BASELINE_BYTES = 10 * 1024 * 1024
+_WORKER_SIZE_FACTOR = 1.2
+_WORKER_FLOOR_BYTES = 35 * 1024 * 1024
+
+#: How much of what is *available* a scan may plan to use. Half, because
+#: calibre is in this process too and the rest of the machine is not ours.
+_RAM_BUDGET = 0.5
+
+#: Where more workers stopped buying speed, measured on one machine: ten
+#: physical cores, 120 real books, warm cache. 4 workers gave 3.3x, 6 gave
+#: 4.5x, 8 gave 4.9x, 10 gave 5.0x and 12 gave 5.3x — so ten cores produced
+#: 5x, not 10x, and the bottleneck is disk and decompression rather than the
+#: core count.
+#:
+#: **This bounds the recommendation, never the setting.** It is one machine's
+#: number and another's disk may keep more workers fed; a user whose scan is
+#: still CPU-bound can raise the value to `worker_cap()`. What it prevents is
+#: offering a 64-core workstation sixty workers for a few per cent.
+_KNEE = 8
+
+
+def worker_cap():
+    """The most workers the setting may be set to: physical cores less two.
+
+    **Two are reserved for the system** (the owner's rule): a scan that makes
+    the machine unusable for its duration is a bad trade for finishing sooner,
+    and calibre's own UI thread is one of the things competing.
+
+    **Physical rather than logical cores.** `os.cpu_count()` counts
+    hyperthreads: on an 8-core Intel it says 16, and the rule would then offer
+    14 workers — far past where any of this stops paying, at 14 times the
+    memory. calibre bundles psutil, which can tell the two apart.
+
+    The floor of 1 is not decoration: on a two-core machine `cores - 2` is
+    zero, and a scan with no workers does nothing at all.
+    """
+    cores = None
+    try:
+        import psutil
+        cores = psutil.cpu_count(logical=False)
+    except Exception:                                   # noqa: BLE001
+        cores = None
+    if not cores:
+        cores = os.cpu_count() or 1
+    return max(1, cores - 2)
+
+
+def recommended_workers(jobs=(), cap=None, available_bytes=None):
+    """A starting value for this machine and this library.
+
+    A fixed default is wrong in both directions, and that is why this is
+    computed rather than chosen: four workers is timid on a publisher's
+    workstation with 128 GB, and too many on a four-core laptop with 8 GB.
+    The user still owns the final value — this only stops them starting from a
+    number that was never about their machine.
+
+    **The library is half of the answer and it is free to ask.** The memory a
+    worker needs tracks the size of the book it is on, and calibre already
+    knows every book's size, so the largest EPUB in the selection sizes the
+    estimate instead of a guess standing in for it.
+
+    `available` rather than `total` memory: this machine has 32 GB installed
+    and 9.2 GB free as this is written, and it is the second that decides
+    whether a scan pushes calibre into swap.
+    """
+    cap = worker_cap() if cap is None else cap
+    largest = 0
+    for job in jobs:
+        path = job[2] if len(job) > 2 else None
+        try:
+            largest = max(largest, os.path.getsize(path))
+        except (OSError, TypeError):
+            continue
+    per_worker = max(_WORKER_FLOOR_BYTES,
+                     _WORKER_BASELINE_BYTES + _WORKER_SIZE_FACTOR * largest)
+    if available_bytes is None:
+        try:
+            import psutil
+            available_bytes = psutil.virtual_memory().available
+        except Exception:                               # noqa: BLE001
+            # No reading is not a reason to refuse to scan; it is a reason not
+            # to be ambitious. One worker is what this plugin did until now.
+            return 1
+    by_ram = int((available_bytes * _RAM_BUDGET) // per_worker)
+    return max(1, min(cap, _KNEE, by_ram))
+
+
 #: How many individual failures the log names before it stops naming them.
 #: A library where every book fails would otherwise put one line per book back
 #: into the log by the other door — and the failures are all in the report
@@ -233,7 +330,7 @@ def _log_failure(trace, logged, result):
 
 
 def scan_books(binary, jobs, report=None, abort=None, notify=None,
-               timeout=runner.DEFAULT_TIMEOUT, log=None):
+               timeout=runner.DEFAULT_TIMEOUT, log=None, workers=1):
     """Validate `jobs`, a list of `(book_id, title, epub_path)`.
 
     **One process per book, deliberately.** Batching several `-i` inputs into
@@ -244,13 +341,34 @@ def scan_books(binary, jobs, report=None, abort=None, notify=None,
     that takes effect within one book, progress that is a real fraction, and a
     pathological archive that costs its own timeout rather than a whole batch's.
 
-    `abort` is checked between books, so cancelling a scan of three thousand
-    books stops in about a fifth of a second and **keeps what it has**. That is
-    the whole reason this returns a report rather than raising.
+    **`workers` runs several of those processes at once, and none of the three
+    reasons above is spent by it.** That argument was against *batching*, which
+    is a different thing: a pool still cancels between books, still reports a
+    real fraction, and still lets one bad archive cost only its own timeout.
+    Measured on ten physical cores over 120 real books — 1 worker 14.38 s,
+    4 workers 4.30 s, 8 workers 2.94 s.
+
+    `abort` is checked before each book is handed out, so cancelling a scan of
+    three thousand books stops within about one book's time and **keeps what it
+    has**. That is the whole reason this returns a report rather than raising.
+    With a pool the books already in flight are allowed to finish; they are
+    counted, not thrown away.
+
+    **Order is preserved deliberately.** A pool finishes out of order, so
+    `report.books` is filled by the job's own index and never appended to as
+    results arrive — otherwise the same library would produce a differently
+    ordered table on every scan. The rule groups need no such care: their sort
+    key ends in the rule's own code, so it is total and insertion order cannot
+    reach it.
+
+    **Only this thread touches `report`.** The pool runs epubveri and hands
+    back an envelope; every mutation of the report happens here, in one thread,
+    which is why none of the grouping needs a lock.
     """
     report = report if report is not None else ScanReport()
     report.requested = len(jobs)
     started = time.time()
+    workers = max(1, int(workers or 1))
     # **A trace, sized by the library rather than by the book count.** DNSB
     # scanned 18 000 books in an hour and a half (MobileRead 375207 #2, #8) and
     # the log said two things: that it started, and — if it reached the end —
@@ -267,51 +385,88 @@ def scan_books(binary, jobs, report=None, abort=None, notify=None,
         if log is not None:
             log(message)
 
-    for index, (book_id, title, path) in enumerate(jobs):
-        if abort is not None and abort.is_set():
-            report.cancelled = True
-            trace('cancelled after %d of %d' % (index, len(jobs)))
-            break
-        if notify is not None:
-            notify(float(index) / max(1, len(jobs)), title)
-        if index and index % step == 0:
-            spent = time.time() - started
-            trace('%d/%d, %.0f s, %.3f s/book' % (index, len(jobs), spent,
-                                                  spent / index))
+    if workers > 1:
+        trace('%d workers' % workers)
 
+    # Filled by index, never appended to — see the docstring.
+    slots = [None] * len(jobs)
+    completed = 0
+    handed_out = 0
+    cancelled = False
+
+    def collect(index, outcome):
+        """Fold one finished book into the report. This thread only."""
+        nonlocal failures_logged
+        book_id, title, path = jobs[index]
         result = BookResult(book_id, title, path)
-        try:
-            envelope = runner.run_epubveri(binary, path, timeout=timeout)
-        except EnvelopeError as exc:
+        slots[index] = result
+        envelope, error = outcome
+        if error is not None:
             result.status = 'failed'
-            result.error = str(exc)
-            report.unreadable.append(result)
-            report.books.append(result)
+            result.error = error
             failures_logged = _log_failure(trace, failures_logged, result)
-            continue
-        except Exception as exc:                        # noqa: BLE001
-            # A timeout, a killed process, a file that vanished between the
-            # database query and the run. None of these is a reason to lose
-            # the other 2 999 books.
-            result.status = 'failed'
-            result.error = '%s: %s' % (type(exc).__name__, exc)
-            report.unreadable.append(result)
-            report.books.append(result)
-            failures_logged = _log_failure(trace, failures_logged, result)
-            continue
-
+            return
         if not report.tool_version:
             report.tool_version = envelope.tool_version
         result.counts = dict(envelope.summary)
         if envelope.could_not_read:
             result.status = 'failed'
             result.error = envelope.error or 'epubveri could not read this file'
-            report.unreadable.append(result)
             failures_logged = _log_failure(trace, failures_logged, result)
         for finding in envelope.findings:
             report.add(finding, book_id)
-        report.books.append(result)
         report.scanned += 1
+
+    def validate(path):
+        """The only thing that runs off this thread."""
+        try:
+            return runner.run_epubveri(binary, path, timeout=timeout), None
+        except EnvelopeError as exc:
+            return None, str(exc)
+        except Exception as exc:                        # noqa: BLE001
+            # A timeout, a killed process, a file that vanished between the
+            # database query and the run. None of these is a reason to lose
+            # the other 2 999 books.
+            return None, '%s: %s' % (type(exc).__name__, exc)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        pending = {}
+        while True:
+            # Hand out work up to the width of the pool. `abort` is checked
+            # here rather than on completion so that cancelling stops new
+            # books starting immediately, whatever is already running.
+            while len(pending) < workers and handed_out < len(jobs):
+                if abort is not None and abort.is_set():
+                    cancelled = True
+                    break
+                index = handed_out
+                handed_out += 1
+                if notify is not None:
+                    notify(float(completed) / max(1, len(jobs)), jobs[index][1])
+                if completed and completed % step == 0:
+                    spent = time.time() - started
+                    trace('%d/%d, %.0f s, %.3f s/book'
+                          % (completed, len(jobs), spent, spent / completed))
+                pending[pool.submit(validate, jobs[index][2])] = index
+            if not pending:
+                break
+            done, _ = wait(list(pending), return_when=FIRST_COMPLETED)
+            for future in done:
+                collect(pending.pop(future), future.result())
+                completed += 1
+            if cancelled and not pending:
+                break
+
+    if cancelled:
+        report.cancelled = True
+        trace('cancelled after %d of %d' % (completed, len(jobs)))
+
+    for result in slots:
+        if result is None:
+            continue
+        report.books.append(result)
+        if result.status == 'failed':
+            report.unreadable.append(result)
 
     report.elapsed = time.time() - started
     return report
