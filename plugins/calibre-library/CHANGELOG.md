@@ -24,15 +24,18 @@
   a hyperthreaded 8-core machine the logical count is 16 and reserving two of
   those would still leave fourteen processes fighting over eight cores.
 
-  It defaults to **Automatic**, which is computed rather than chosen — a fixed
-  default is wrong in both directions, timid on a publisher's workstation with
-  128 GB and too many on a four-core laptop with 8 GB. Automatic reads the
-  cores, the *free* memory rather than the installed memory, and the largest
-  book in the library, since a worker costs roughly the size of the book it is
-  working on. On most libraries that memory term decides nothing — eight
-  workers over the forty largest books of a 474-book library peaked at 331 MB
-  all told. It is there for the library of large illustrated books, where a
-  worker costs hundreds of megabytes rather than tens.
+  It defaults to **Automatic**, which is that maximum, or the number of books
+  if the selection is smaller — a fourth worker on three books has nothing to
+  do.
+
+  An estimate that also read free memory and the size of the largest books was
+  written, measured and then removed. It worked; that is why it went. Eight
+  workers over the forty largest books of a 474-book library peak at 331 MB
+  all told, and the term only began to bind below 512 MB of free memory — a
+  machine already in trouble. The library it would have protected is one of
+  large illustrated books being bulk-scanned on a small laptop, and nobody has
+  one. If that turns up, it can be built against a real library instead of a
+  guess about one.
 
 - **What deliberately did not change.** Cancelling still stops the scan
   handing out new books and keeps everything already done — the books in

@@ -213,42 +213,29 @@ class ScanReport:
         return out
 
 
-#: Peak resident memory one epubveri process needs, as a function of the book.
-#: Measured across the reference shelf: an 80.7 MB book peaked at 90.4 MB, a
-#: 0.9 MB book at 8.4 MB — so a fixed baseline plus about the size of the file.
+#: **There was a memory term here and it was removed deliberately — do not
+#: put it back without a user who needs it.**
 #:
-#: The floor is the second dimension. Size is not the only thing that costs:
-#: a 0.7 MB book carrying 6 859 findings peaked at 17-32 MB, because the
-#: findings themselves are held. A library of small files is therefore not as
-#: cheap as its sizes suggest, and the floor is what stops the estimate saying
-#: it is.
-_WORKER_BASELINE_BYTES = 10 * 1024 * 1024
-_WORKER_SIZE_FACTOR = 1.2
-_WORKER_FLOOR_BYTES = 35 * 1024 * 1024
-
-#: How much of what is *available* a scan may plan to use. Half, because
-#: calibre is in this process too and the rest of the machine is not ours.
-_RAM_BUDGET = 0.5
-
-#: **There is no knee constant here any more, and the reason it went is worth
-#: keeping.** The first version bounded the recommendation at 8, on the
-#: measured fact that ten cores produced 5x rather than 10x, and explained
-#: that as the disk and the decompression rather than the processor. That
-#: explanation was written before it was tested, and it is wrong.
+#: It estimated the RAM a worker would want from the largest books in the
+#: library and lowered the recommendation to fit free memory. It worked, and
+#: it was measured: eight workers over the forty largest books of a 474-book
+#: library peak at **331 MB** all told. That is the point. On this shelf the
+#: term only began to bind below **512 MB of free memory**, which is a machine
+#: already in trouble for other reasons.
 #:
-#: Measured: at 8 workers `sys` time over the whole run is **0.50 s** against
-#: 2.92 s of wall — nothing is waiting on I/O — while `user` CPU *rises* from
-#: 13.88 s to 16.77 s for the same books. That is contention, not blocking.
-#: And the machine explains it: an **Apple M2 Pro, 6 performance cores and 4
-#: efficiency cores**. `psutil` counts ten physical cores and four of them are
-#: several times slower, so ~5x is what ten of *these* cores are worth.
+#: The population it protected was a library of large illustrated books —
+#: comics, fixed layout — being bulk-scanned on a small laptop, and nobody has
+#: reported one. The owner's call, and the family's own rule: no value is
+#: invented for an unnamed need. If someone turns up whose scan swaps, they
+#: will say so and the fix can be built against their library instead of
+#: against a guess about it.
 #:
-#: A ceiling derived from that is a fact about heterogeneous ARM laptops, not
-#: about scanning. On a homogeneous 16-core workstation the same eight workers
-#: would very likely keep scaling — which is exactly the machine the cap was
-#: being generous for. So the bound is now the cap and the memory, both of
-#: which are about the user's machine, and nothing pretends to know where a
-#: machine we have never measured stops paying.
+#: The sharper reason, kept because it generalises: **a heuristic that never
+#: runs is a heuristic that never gets corrected.** This one was already wrong
+#: once within a day of being written — it assumed every worker would be on
+#: the largest book, and predicted 854 MB where 331 was spent — and it was
+#: only caught because someone thought to measure it. Left in, firing for
+#: nobody, its next error would have waited for the one user it finally met.
 
 
 def worker_cap():
@@ -277,80 +264,24 @@ def worker_cap():
     return max(1, cores - 2)
 
 
-def recommended_workers(jobs=(), cap=None, available_bytes=None):
-    """A starting value for this machine and this library.
+def recommended_workers(jobs=(), cap=None):
+    """The worker count to start from: the cap, or the number of books.
 
-    A fixed default is wrong in both directions, and that is why this is
-    computed rather than chosen: four workers is timid on a publisher's
-    workstation with 128 GB, and too many on a four-core laptop with 8 GB.
-    The user still owns the final value — this only stops them starting from a
-    number that was never about their machine.
+    Deliberately not clever. The maximum this machine allows is the whole
+    answer, minus the one case where it would be silly — a selection of three
+    books has nothing for a fourth worker to do, and offering one would show a
+    number the scan could not use.
 
-    **The library is half of the answer and it is free to ask.** The memory a
-    worker needs tracks the size of the book it is on, and calibre already
-    knows every book's size, so the books themselves size the estimate instead
-    of a guess standing in for it.
-
-    **The worst case is not "every worker on the largest book".** It is *n*
-    workers on the *n* largest books, since no more than one of them can hold
-    the biggest one. The first version assumed the former and was measured
-    against reality on the 40 largest books of the reference library:
-
-    | workers | measured peak | assuming the largest | this model |
-    |---|---|---|---|
-    | 1 | 90 MB | 107 MB | 107 MB |
-    | 4 | 232 MB | 427 MB | 289 MB |
-    | 8 | 331 MB | 854 MB | 382 MB |
-
-    A model that says 854 MB where 331 is spent will refuse workers a machine
-    could easily afford. This one keeps a margin of roughly a fifth, which is
-    the direction to be wrong in.
-
-    So the answer is the largest *n* whose own worst case still fits the
-    budget, which is why this is a loop rather than a division — the estimate
-    depends on the number being estimated.
-
-    `available` rather than `total` memory: this machine has 32 GB installed
-    and 9.2 GB free as this is written, and it is the second that decides
-    whether a scan pushes calibre into swap.
+    See the note above for the memory estimate that used to be here and why it
+    is not.
     """
     cap = worker_cap() if cap is None else cap
-    sizes = []
-    for job in jobs:
-        path = job[2] if len(job) > 2 else None
-        try:
-            sizes.append(os.path.getsize(path))
-        except (OSError, TypeError):
-            continue
-    sizes.sort(reverse=True)
-
-    if available_bytes is None:
-        try:
-            import psutil
-            available_bytes = psutil.virtual_memory().available
-        except Exception:                               # noqa: BLE001
-            # No reading is not a reason to refuse to scan; it is a reason not
-            # to be ambitious. One worker is what this plugin did until now.
-            return 1
-    budget = available_bytes * _RAM_BUDGET
-
-    # Never more workers than books: with three books in the selection, the
-    # fourth worker has nothing to do and its memory was still counted.
-    ceiling = cap
-    if sizes:
-        ceiling = min(ceiling, len(sizes))
-
-    best = 1
-    for n in range(1, ceiling + 1):
-        top = sizes[:n]
-        average = (sum(top) / float(len(top))) if top else 0
-        per_worker = max(_WORKER_FLOOR_BYTES,
-                         _WORKER_BASELINE_BYTES + _WORKER_SIZE_FACTOR * average)
-        if per_worker * n <= budget:
-            best = n
-        else:
-            break
-    return max(1, best)
+    count = 0
+    for _job in jobs:
+        count += 1
+    if count:
+        cap = min(cap, count)
+    return max(1, cap)
 
 
 #: How many individual failures the log names before it stops naming them.
