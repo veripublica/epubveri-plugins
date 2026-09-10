@@ -12,7 +12,7 @@
 from calibre.customize import EditBookToolPlugin
 
 PLUGIN_NAME = 'epubveri'
-PLUGIN_VERSION_TUPLE = (0, 4, 3)
+PLUGIN_VERSION_TUPLE = (0, 4, 4)
 PLUGIN_VERSION = '.'.join(str(part) for part in PLUGIN_VERSION_TUPLE)
 
 
@@ -29,10 +29,24 @@ class EpubVeriPlugin(EditBookToolPlugin):
     version = PLUGIN_VERSION_TUPLE
     author = 'Baris Kayadelen (veripublica)'
     supported_platforms = ['windows', 'osx', 'linux']
+    #: **It names its companion, because the plugin list no longer does.**
+    #: Both plugins used to share one heading in Preferences / Plugins — the
+    #: library one declared this plugin's category to sit beside it. It stopped
+    #: doing that in its 0.2.0, after MobileRead retitled its thread
+    #: "[GUI Plugin] epubveri library" and filed it under Extend calibre
+    #: generally, so the two now appear under separate headings.
+    #:
+    #: That is the right category for it and the wrong outcome for a reader:
+    #: someone who installs this one, which came first and is the more widely
+    #: installed of the two, would have no way to learn the other exists —
+    #: and a large library is exactly the case it was written for. The
+    #: cross-reference used to run one way only; now it runs both.
     description = (
         'Validate the book you are editing with epubveri, a fast JVM-free '
-        'EPUB validator. Downloads and verifies the epubveri binary on first '
-        'use; nothing else is installed.'
+        'EPUB validator. Its companion, the "epubveri library" plugin, checks '
+        'a whole calibre library at once and reports which defects recur '
+        'across it. Downloads and verifies the epubveri binary on first use; '
+        'nothing else is installed.'
     )
     #: Set by what the code imports, not by what has been tried: `qt.core`
     #: arrived with calibre 6 (before that it was `PyQt5.Qt`), so 6.0 is the

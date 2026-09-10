@@ -226,6 +226,23 @@ class DataDirTests(unittest.TestCase):
     """Where the binary goes, which is the one thing about this plugin that
     Sigil's answer gets wrong."""
 
+    def test_it_names_its_companion_plugin(self):
+        """The plugin list stopped saying the two are one product.
+
+        They shared a heading in Preferences / Plugins until the library
+        plugin's 0.2.0 took its own category — the right one, after MobileRead
+        filed it as a GUI plugin. The cost falls on this entry: this plugin
+        came first and is the more widely installed, so a reader who only ever
+        sees this one would not learn the other exists, and a large library is
+        the case it was written for.
+
+        Nothing but this test would notice the sentence being edited away.
+        """
+        from calibre_plugins.epubveri import EpubVeriPlugin
+        text = EpubVeriPlugin.description.lower()
+        self.assertIn('epubveri library', text)
+        self.assertIn('calibre library', text)
+
     def test_the_binary_never_lands_inside_the_plugin_archive(self):
         """calibre imports a plugin out of its zip and never unpacks it, so
         `os.path.dirname(__file__)` is a **file**. Installing there failed

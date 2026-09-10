@@ -3,6 +3,23 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
+## [0.4.4] — 2026-09-10
+
+- **The description now names the library plugin.** The two used to share one
+  heading in calibre's plugin list, because the library plugin declared this
+  one's category in order to sit beside it. It stopped doing that in its
+  0.2.0, after MobileRead retitled its thread **[GUI Plugin] epubveri
+  library** and filed it under *Extend calibre generally* — the right category
+  for it, and one that leaves the two entries apart.
+
+  The cost of that lands here rather than there. This plugin came first and is
+  the more widely installed, so a reader who only ever meets this entry would
+  have no way to learn that a whole-library check exists — and a large library
+  is exactly what it was written for. The cross-reference ran one way before;
+  it runs both ways now.
+
+  Nothing else changed: no behaviour, no settings, no new permissions.
+
 ## [0.4.3] — 2026-09-09
 
 - **A chosen ground now reaches the column headings and the scroll bar, not
