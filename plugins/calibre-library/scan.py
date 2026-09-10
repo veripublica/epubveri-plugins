@@ -230,17 +230,25 @@ _WORKER_FLOOR_BYTES = 35 * 1024 * 1024
 #: calibre is in this process too and the rest of the machine is not ours.
 _RAM_BUDGET = 0.5
 
-#: Where more workers stopped buying speed, measured on one machine: ten
-#: physical cores, 120 real books, warm cache. 4 workers gave 3.3x, 6 gave
-#: 4.5x, 8 gave 4.9x, 10 gave 5.0x and 12 gave 5.3x — so ten cores produced
-#: 5x, not 10x, and the bottleneck is disk and decompression rather than the
-#: core count.
+#: **There is no knee constant here any more, and the reason it went is worth
+#: keeping.** The first version bounded the recommendation at 8, on the
+#: measured fact that ten cores produced 5x rather than 10x, and explained
+#: that as the disk and the decompression rather than the processor. That
+#: explanation was written before it was tested, and it is wrong.
 #:
-#: **This bounds the recommendation, never the setting.** It is one machine's
-#: number and another's disk may keep more workers fed; a user whose scan is
-#: still CPU-bound can raise the value to `worker_cap()`. What it prevents is
-#: offering a 64-core workstation sixty workers for a few per cent.
-_KNEE = 8
+#: Measured: at 8 workers `sys` time over the whole run is **0.50 s** against
+#: 2.92 s of wall — nothing is waiting on I/O — while `user` CPU *rises* from
+#: 13.88 s to 16.77 s for the same books. That is contention, not blocking.
+#: And the machine explains it: an **Apple M2 Pro, 6 performance cores and 4
+#: efficiency cores**. `psutil` counts ten physical cores and four of them are
+#: several times slower, so ~5x is what ten of *these* cores are worth.
+#:
+#: A ceiling derived from that is a fact about heterogeneous ARM laptops, not
+#: about scanning. On a homogeneous 16-core workstation the same eight workers
+#: would very likely keep scaling — which is exactly the machine the cap was
+#: being generous for. So the bound is now the cap and the memory, both of
+#: which are about the user's machine, and nothing pretends to know where a
+#: machine we have never measured stops paying.
 
 
 def worker_cap():
@@ -280,23 +288,42 @@ def recommended_workers(jobs=(), cap=None, available_bytes=None):
 
     **The library is half of the answer and it is free to ask.** The memory a
     worker needs tracks the size of the book it is on, and calibre already
-    knows every book's size, so the largest EPUB in the selection sizes the
-    estimate instead of a guess standing in for it.
+    knows every book's size, so the books themselves size the estimate instead
+    of a guess standing in for it.
+
+    **The worst case is not "every worker on the largest book".** It is *n*
+    workers on the *n* largest books, since no more than one of them can hold
+    the biggest one. The first version assumed the former and was measured
+    against reality on the 40 largest books of the reference library:
+
+    | workers | measured peak | assuming the largest | this model |
+    |---|---|---|---|
+    | 1 | 90 MB | 107 MB | 107 MB |
+    | 4 | 232 MB | 427 MB | 289 MB |
+    | 8 | 331 MB | 854 MB | 382 MB |
+
+    A model that says 854 MB where 331 is spent will refuse workers a machine
+    could easily afford. This one keeps a margin of roughly a fifth, which is
+    the direction to be wrong in.
+
+    So the answer is the largest *n* whose own worst case still fits the
+    budget, which is why this is a loop rather than a division — the estimate
+    depends on the number being estimated.
 
     `available` rather than `total` memory: this machine has 32 GB installed
     and 9.2 GB free as this is written, and it is the second that decides
     whether a scan pushes calibre into swap.
     """
     cap = worker_cap() if cap is None else cap
-    largest = 0
+    sizes = []
     for job in jobs:
         path = job[2] if len(job) > 2 else None
         try:
-            largest = max(largest, os.path.getsize(path))
+            sizes.append(os.path.getsize(path))
         except (OSError, TypeError):
             continue
-    per_worker = max(_WORKER_FLOOR_BYTES,
-                     _WORKER_BASELINE_BYTES + _WORKER_SIZE_FACTOR * largest)
+    sizes.sort(reverse=True)
+
     if available_bytes is None:
         try:
             import psutil
@@ -305,8 +332,25 @@ def recommended_workers(jobs=(), cap=None, available_bytes=None):
             # No reading is not a reason to refuse to scan; it is a reason not
             # to be ambitious. One worker is what this plugin did until now.
             return 1
-    by_ram = int((available_bytes * _RAM_BUDGET) // per_worker)
-    return max(1, min(cap, _KNEE, by_ram))
+    budget = available_bytes * _RAM_BUDGET
+
+    # Never more workers than books: with three books in the selection, the
+    # fourth worker has nothing to do and its memory was still counted.
+    ceiling = cap
+    if sizes:
+        ceiling = min(ceiling, len(sizes))
+
+    best = 1
+    for n in range(1, ceiling + 1):
+        top = sizes[:n]
+        average = (sum(top) / float(len(top))) if top else 0
+        per_worker = max(_WORKER_FLOOR_BYTES,
+                         _WORKER_BASELINE_BYTES + _WORKER_SIZE_FACTOR * average)
+        if per_worker * n <= budget:
+            best = n
+        else:
+            break
+    return max(1, best)
 
 
 #: How many individual failures the log names before it stops naming them.

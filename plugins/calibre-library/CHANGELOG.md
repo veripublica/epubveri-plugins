@@ -7,12 +7,15 @@
   (MobileRead 375207 #2, #8) and the whole of that was one book at a time.
 
   Measured over 120 real books on ten physical cores: 1 worker 14.38 s,
-  4 workers 4.30 s (3.3x), 8 workers 2.94 s (4.9x). It saturates around six to
-  eight, and **ten cores gave five times the speed rather than ten** — the
-  limit is the disk and the decompression, not the processor. So a library on
-  a network share or an external drive may well do better with fewer workers,
-  which is one of the two reasons this is a setting rather than a number we
-  picked.
+  4 workers 4.30 s (3.3x), 8 workers 2.94 s (4.9x).
+
+  **Ten cores gave about five times the speed rather than ten, and the reason
+  is the cores rather than the disk** — measured, after an earlier draft of
+  this note asserted the opposite. Across the whole run `sys` time is half a
+  second, so nothing waits on I/O; what rises is CPU time itself, 13.9 s to
+  16.8 s for the same books. The machine is an Apple M2 Pro: six performance
+  cores and four efficiency ones. Ten *equal* cores would be expected to do
+  better, which is why nothing here caps you at what this laptop managed.
 
   The other reason is that we cannot see your machine. A **Books validated at
   the same time** control is in Preferences → Plugins → Customize, and its
@@ -26,9 +29,10 @@
   128 GB and too many on a four-core laptop with 8 GB. Automatic reads the
   cores, the *free* memory rather than the installed memory, and the largest
   book in the library, since a worker costs roughly the size of the book it is
-  working on. It is bounded where the measurements stopped showing a gain, so
-  a 64-core machine is not offered sixty workers for a few per cent; raise the
-  setting yourself if your disk keeps up.
+  working on. On most libraries that memory term decides nothing — eight
+  workers over the forty largest books of a 474-book library peaked at 331 MB
+  all told. It is there for the library of large illustrated books, where a
+  worker costs hundreds of megabytes rather than tens.
 
 - **What deliberately did not change.** Cancelling still stops the scan
   handing out new books and keeps everything already done — the books in

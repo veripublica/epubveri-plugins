@@ -160,12 +160,15 @@ class ConfigWidget(QWidget):
         note = QLabel(
             _('The maximum is %d: two cores are kept for the rest of the '
               'system, including calibre itself. Automatic also looks at free '
-              'memory and at the largest book in the library, since a worker '
-              'costs roughly the size of the book it is on.\n\n'
-              'More is not always faster. On the machine this was measured on, '
-              'ten cores gave five times the speed rather than ten — the limit '
-              'was the disk, not the processor — so a library on a network '
-              'share or an external drive may do better with fewer.') % cap,
+              'memory and at the largest books in the library, since a worker '
+              'costs roughly the size of the book it is on — on most '
+              'libraries that never decides anything, and on one full of '
+              'large illustrated books it does.\n\n'
+              'More is not always faster, and not every core is worth the '
+              'same: on a laptop whose cores are a mix of fast and efficient '
+              'ones, ten of them measured about five times the speed rather '
+              'than ten. If a scan is not getting quicker, this is the number '
+              'to lower.') % cap,
             speed)
         note.setWordWrap(True)
         speed_layout.addWidget(note)

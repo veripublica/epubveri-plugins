@@ -514,24 +514,59 @@ class ScanTests(unittest.TestCase):
         big = os.path.join(self.tmp, 'big.epub')
         with open(self.book, 'rb') as src, open(big, 'wb') as dst:
             dst.write(src.read())
-        jobs = [(1, 'B', big)]
+        jobs = [(i, 'B%d' % i, big) for i in range(8)]
         roomy = scan.recommended_workers(jobs, cap=8, available_bytes=64 * 2**30)
         cramped = scan.recommended_workers(jobs, cap=8, available_bytes=64 * 2**20)
         self.assertEqual(roomy, 8, 'plenty of memory: the cap decides')
         self.assertEqual(cramped, 1, 'almost none: still one, never zero')
         self.assertLess(cramped, roomy)
 
-    def test_the_recommendation_is_bounded_where_more_stopped_paying(self):
-        """A 64-core workstation is not offered 62 workers.
+    def test_the_worst_case_is_n_workers_on_the_n_largest_books(self):
+        """Not every worker on the largest book — only one of them can be.
 
-        Ten physical cores produced five times the speed rather than ten, so
-        the limit measured was the disk. The knee bounds the *recommendation*
-        only — a user whose disk keeps up can still raise the setting to the
-        cap.
+        Measured on the 40 largest books of the reference library: eight
+        workers peaked at 331 MB, where assuming the largest for each would
+        have predicted 854 MB. A model that pessimistic refuses workers a
+        machine could easily afford, so the estimate averages the *n* largest
+        rather than repeating the biggest.
+
+        Here: one large book among small ones must not price all eight
+        workers as if they were each on the large one.
         """
-        huge = scan.recommended_workers(cap=62, available_bytes=128 * 2**30)
-        self.assertEqual(huge, scan._KNEE)
-        self.assertLess(huge, 62)
+        big = os.path.join(self.tmp, 'one-big.epub')
+        with open(self.book, 'rb') as src:
+            body = src.read()
+        with open(big, 'wb') as dst:
+            dst.write(body + b'\0' * (40 * 1024 * 1024))
+        jobs = [(0, 'big', big)] + [(i, 'small%d' % i, self.book)
+                                    for i in range(1, 8)]
+        # A budget that fits eight averaged workers but not eight of the big
+        # one: 8 x (10 + 1.2 x 40 MB) would be 464 MB, the average is far less.
+        got = scan.recommended_workers(jobs, cap=8, available_bytes=560 * 2**20)
+        self.assertEqual(got, 8, 'the average of the eight largest is what fits')
+
+    def test_never_more_workers_than_books(self):
+        """The fourth worker on a three-book selection has nothing to do, and
+        its memory was counted against the budget anyway."""
+        jobs = [(i, 'b%d' % i, self.book) for i in range(3)]
+        self.assertEqual(
+            scan.recommended_workers(jobs, cap=8, available_bytes=64 * 2**30), 3)
+
+    def test_the_cap_is_what_bounds_a_large_machine(self):
+        """No invented ceiling — the cap and the memory are the only bounds.
+
+        An earlier version stopped the recommendation at 8 because ten cores
+        measured 5x rather than 10x here. That reading was wrong: `sys` time
+        over the run is half a second, so nothing waits on I/O, and this
+        machine is an M2 Pro whose ten "physical" cores are six performance
+        and four efficiency. 5x is what ten of *these* cores are worth, and
+        generalising it would have capped exactly the homogeneous workstation
+        the setting exists for.
+        """
+        jobs = [(i, 'b%d' % i, self.book) for i in range(64)]
+        self.assertEqual(
+            scan.recommended_workers(jobs, cap=32, available_bytes=256 * 2**30),
+            32, 'with the memory and the books to spare, the cap decides')
 
     def test_progress_is_a_fraction_and_a_title(self):
         seen = []
