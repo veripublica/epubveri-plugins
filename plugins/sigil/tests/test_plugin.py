@@ -253,6 +253,71 @@ class BuildEpubTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_a_files_line_table_is_built_once_however_many_findings_it_has(self):
+        """The property, not the timing: one read per FILE, not per finding.
+
+        Sigil wants an absolute offset for every row, so `_report` asks for one
+        per finding. Without the cache each ask re-read the document and
+        re-tabulated it — O(file size) paid O(findings) times, which on the
+        worst book of the reference shelf (6 859 findings, 171 KB documents)
+        was 1.88 s of plugin time against about 0.2 s of validation.
+
+        Asserted by counting `_line_offsets` calls rather than by timing,
+        because a timing test on a fast machine passes whatever the code does.
+        Reverting the cache makes this 40 rather than 1.
+        """
+        tmp = tempfile.mkdtemp()
+        try:
+            text = "\n".join("<p>line %d</p>" % i for i in range(40))
+            with open(os.path.join(tmp, "f.xhtml"), "w") as handle:
+                handle.write(text)
+
+            calls = []
+            real = plugin._line_offsets
+
+            def counted(body):
+                calls.append(1)
+                return real(body)
+
+            plugin._line_offsets = counted
+            try:
+                cache = {}
+                seen = [plugin._char_offset(tmp, "f.xhtml", n + 1, 1, cache)
+                        for n in range(40)]
+            finally:
+                plugin._line_offsets = real
+
+            self.assertEqual(len(calls), 1,
+                             "one file, 40 findings, %d reads" % len(calls))
+            # And the answers are still each line's own start, so the saving
+            # did not cost correctness.
+            self.assertEqual(seen, [real(text)[n] for n in range(40)])
+
+            # A second file is a second entry, not a second read of the first.
+            with open(os.path.join(tmp, "g.xhtml"), "w") as handle:
+                handle.write(text)
+            plugin._line_offsets = counted
+            try:
+                plugin._char_offset(tmp, "g.xhtml", 1, 1, cache)
+                plugin._char_offset(tmp, "f.xhtml", 2, 1, cache)
+            finally:
+                plugin._line_offsets = real
+            self.assertEqual(len(calls), 2, "g.xhtml read once, f.xhtml cached")
+
+            # An unreadable file is cached as a miss, so it is not retried per
+            # finding in the slower form.
+            before = len(calls)
+            plugin._line_offsets = counted
+            try:
+                for _ in range(5):
+                    self.assertIsNone(
+                        plugin._char_offset(tmp, "gone.xhtml", 1, 1, cache))
+            finally:
+                plugin._line_offsets = real
+            self.assertEqual(len(calls), before, "a miss is cached too")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
 
 class ResultXmlTests(unittest.TestCase):
     """Everything we hand Sigil ends up inside a double-quoted XML attribute,

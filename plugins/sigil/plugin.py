@@ -597,7 +597,7 @@ def _line_offsets(text):
     return offsets
 
 
-def _char_offset(workdir, location, line, column):
+def _char_offset(workdir, location, line, column, cache=None):
     """The absolute character offset of a finding, for Sigil's results panel.
 
     Sigil uses this **in preference to the line number** — `OpenResource`
@@ -611,17 +611,39 @@ def _char_offset(workdir, location, line, column):
     Indexing it directly with the line number put every finding one line late:
     reported 283, highlighted 284. Only running it in Sigil could show that —
     the test that existed checked `_line_offsets` alone and passed throughout.
+
+    **`cache` is a per-run `{location: offsets}` and is why this is not the
+    slowest thing the plugin does.** Findings come one per call, but a book's
+    findings cluster in a handful of files, so without it a document was read
+    and re-tabulated once *per finding*: the cost is O(file size) and it was
+    being paid O(findings) times. Measured on a 171 KB document, 0.27 ms per
+    finding — for the worst book on the reference shelf (6 859 findings) that
+    is **1.88 s of the plugin's own time against about 0.2 s of validation**,
+    and it grows with the file rather than with what is wrong in it. With the
+    cache the same run is 0.001 s.
+
+    Passed in rather than kept in a module global on purpose: `run` is called
+    again for the same plugin process on the next book, and a global would
+    hold offsets for a `workdir` that has been deleted and re-made — stale by
+    exactly the amount the user edited. A dict that lives as long as one
+    report cannot.
     """
     if not location or not line or line < 1:
         return None
-    path = os.path.join(workdir, location.replace("/", os.sep))
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as handle:
-            text = handle.read()
-    except OSError:
-        return None
-    offsets = _line_offsets(text)
-    if line > len(offsets):
+    if cache is None:
+        cache = {}
+    if location not in cache:
+        path = os.path.join(workdir, location.replace("/", os.sep))
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                cache[location] = _line_offsets(handle.read())
+        except OSError:
+            # Cached as a miss too: an unreadable file is unreadable for every
+            # finding in it, and retrying per finding is the same waste in a
+            # slower form.
+            cache[location] = None
+    offsets = cache[location]
+    if offsets is None or line > len(offsets):
         return None
     return offsets[line - 1] + max((column or 1) - 1, 0)
 
@@ -663,6 +685,9 @@ def _report(bk, envelope, workdir, show, order=_SORT_DEFAULT):
     the rows withheld per category, because the summary has to say so.
     """
     counts = {"shown": 0, "usage": 0, "advisory": 0}
+    #: `{location: line offsets}` for the files this report touches, built on
+    #: demand and thrown away with the report. See `_char_offset`.
+    offsets = {}
     for finding in _ordered(envelope.findings, order):
         # `ADV-*`/`NEXT-*` are emitted AT usage severity, so the advisory test
         # has to come first or `show_usage: false` would silently take the
@@ -692,7 +717,7 @@ def _report(bk, envelope, workdir, show, order=_SORT_DEFAULT):
         bookpath = finding.location or _NO_FILE
         line = finding.line or -1
         offset = _char_offset(workdir, finding.location,
-                              finding.line, finding.column)
+                              finding.line, finding.column, offsets)
         if offset is None:
             bk.add_result(restype, _xml_attr(bookpath), line, _xml_attr(text))
         else:

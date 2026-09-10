@@ -3,6 +3,33 @@
 This plugin is versioned independently of the calibre plugin and of epubveri
 itself. The version Sigil shows comes from `plugin.xml`.
 
+## [0.3.2] — 2026-09-10
+
+- **A book's documents are read once each rather than once per finding.**
+  Sigil puts the cursor on a finding using an absolute character offset, so
+  the plugin computes one for every row. Each computation re-read the whole
+  document and rebuilt its line table: a cost proportional to the *file* being
+  paid once per *finding*, which is the wrong way round — a long document with
+  many findings paid for its length over and over.
+
+  Measured on the worst book of the reference shelf, 6 859 findings:
+  epubveri validates it in **0.52 s** and the plugin was then spending
+  **1.88 s** turning the answer into rows. The wait was 2.40 s, of which 78%
+  was the plugin re-reading files it had already read. It is now **0.53 s**,
+  and the row-building part is 0.011 s.
+
+  Nothing about the output changes — same rows, same order, same offsets,
+  verified line by line against the old computation. The table is built on
+  demand, one entry per file, and thrown away with the report rather than kept
+  in a module global: `run` is called again for the next book, and a global
+  would hold offsets for a working directory that has since been deleted and
+  rebuilt — stale by exactly the amount the user had edited.
+
+  The test asserts the property rather than the timing — one read per file,
+  however many findings it has — because a timing test on a fast machine
+  passes whatever the code does. It was checked by reverting the change and
+  watching it report 40 reads for 40 findings in one file.
+
 ## [0.3.1] — 2026-09-09
 
 - **A new plugin icon, and it is a pair of colours rather than one.** The old
