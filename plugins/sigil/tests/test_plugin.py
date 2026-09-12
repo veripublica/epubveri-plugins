@@ -214,17 +214,69 @@ class BuildEpubTests(unittest.TestCase):
         self.assertEqual(bk.get_opf_calls, 0,
                          "the OPF Sigil displays was replaced by a rebuild")
 
+    def _offset_in(self, text, line, column):
+        """`_char_offset` over one file written verbatim as bytes."""
+        import shutil
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        try:
+            with open(os.path.join(tmp, "f.xhtml"), "wb") as handle:
+                handle.write(text.encode("utf-8"))
+            return plugin._char_offset(tmp, "f.xhtml", line, column, {})
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_the_offset_is_in_qchars_not_python_characters(self):
+        """Code View counts UTF-16 code units (KevinH, MobileRead 375136 #39).
+
+        One astral character is one Python character and two QChars, so a
+        finding after one lands a position early unless converted. Both halves
+        are exercised: an astral character on an earlier line, and one earlier
+        on the same line.
+        """
+        emoji = "\U0001F642"
+        self.assertEqual(self._offset_in("a%sb\nxy" % emoji, 2, 1), 5)
+        self.assertEqual(self._offset_in("a%sb\nxy" % emoji, 1, 3), 3)
+        # And the ordinary case is unchanged: Turkish is all BMP, one unit.
+        self.assertEqual(self._offset_in("üçüncü\nsatır", 2, 3), 9)
+
+    def test_only_a_newline_starts_a_line(self):
+        """`str.splitlines()` breaks on `\u2028`, `\u2029`, `\x85` and more;
+        epubveri counts `\n`. A document with one of those used to gain a line
+        this side, putting every later finding a line out. **4 of 474 real
+        books carry one.**"""
+        for separator in ("\u2028", "\u2029", "\x85", "\f", "\v"):
+            text = "one%stwo\nthree" % separator
+            # "three" starts after "one<sep>two\n" — 8 QChars, whatever the
+            # separator is, because none of them ends a line for epubveri.
+            self.assertEqual(self._offset_in(text, 2, 1), 8,
+                             "U+%04X" % ord(separator))
+
+    def test_carriage_returns_are_not_counted(self):
+        """Sigil strips CRs on load and writes them back only on Windows, so
+        Code View never counts them — and neither may we.
+
+        True today because `open()` in text mode translates `\r\n` by
+        default, which is a default rather than a decision: `newline=""` on
+        that one call moves every finding past line 1 on **61% of real
+        books**, on Windows only, where nobody here would see it. Hence a
+        test, on bytes that actually carry CRs.
+        """
+        self.assertEqual(self._offset_in("one\r\ntwo\r\nthree", 3, 1), 8)
+        self.assertEqual(self._offset_in("one\ntwo\nthree", 3, 1), 8)
+
     def test_line_and_column_map_to_a_character_offset(self):
         """The offset must land on the character epubveri named.
 
-        The version of this test that only checked `_line_offsets` passed
+        The version of this test that only checked `_line_table` passed
         while every finding pointed one line late — Sigil reported line 283
         and highlighted 284 — because the bug was in the *use* of that list,
         not in the list. So this asserts the character at the offset, which is
         the only thing that can be wrong in a way a user sees.
         """
-        offsets = plugin._line_offsets("abc\ndefg\nhi")
-        self.assertEqual(offsets[:4], [0, 4, 9, 11])
+        offsets, lines = plugin._line_table("abc\ndefg\nhi")
+        self.assertEqual(offsets[:3], [0, 4, 9])
+        self.assertEqual(lines, ["abc", "defg", "hi"])
 
         import shutil
         import tempfile
@@ -262,7 +314,7 @@ class BuildEpubTests(unittest.TestCase):
         worst book of the reference shelf (6 859 findings, 171 KB documents)
         was 1.88 s of plugin time against about 0.2 s of validation.
 
-        Asserted by counting `_line_offsets` calls rather than by timing,
+        Asserted by counting `_line_table` calls rather than by timing,
         because a timing test on a fast machine passes whatever the code does.
         Reverting the cache makes this 40 rather than 1.
         """
@@ -273,47 +325,47 @@ class BuildEpubTests(unittest.TestCase):
                 handle.write(text)
 
             calls = []
-            real = plugin._line_offsets
+            real = plugin._line_table
 
             def counted(body):
                 calls.append(1)
                 return real(body)
 
-            plugin._line_offsets = counted
+            plugin._line_table = counted
             try:
                 cache = {}
                 seen = [plugin._char_offset(tmp, "f.xhtml", n + 1, 1, cache)
                         for n in range(40)]
             finally:
-                plugin._line_offsets = real
+                plugin._line_table = real
 
             self.assertEqual(len(calls), 1,
                              "one file, 40 findings, %d reads" % len(calls))
             # And the answers are still each line's own start, so the saving
             # did not cost correctness.
-            self.assertEqual(seen, [real(text)[n] for n in range(40)])
+            self.assertEqual(seen, [real(text)[0][n] for n in range(40)])
 
             # A second file is a second entry, not a second read of the first.
             with open(os.path.join(tmp, "g.xhtml"), "w") as handle:
                 handle.write(text)
-            plugin._line_offsets = counted
+            plugin._line_table = counted
             try:
                 plugin._char_offset(tmp, "g.xhtml", 1, 1, cache)
                 plugin._char_offset(tmp, "f.xhtml", 2, 1, cache)
             finally:
-                plugin._line_offsets = real
+                plugin._line_table = real
             self.assertEqual(len(calls), 2, "g.xhtml read once, f.xhtml cached")
 
             # An unreadable file is cached as a miss, so it is not retried per
             # finding in the slower form.
             before = len(calls)
-            plugin._line_offsets = counted
+            plugin._line_table = counted
             try:
                 for _ in range(5):
                     self.assertIsNone(
                         plugin._char_offset(tmp, "gone.xhtml", 1, 1, cache))
             finally:
-                plugin._line_offsets = real
+                plugin._line_table = real
             self.assertEqual(len(calls), before, "a miss is cached too")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)

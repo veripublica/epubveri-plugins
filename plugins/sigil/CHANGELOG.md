@@ -3,6 +3,44 @@
 This plugin is versioned independently of the calibre plugin and of epubveri
 itself. The version Sigil shows comes from `plugin.xml`.
 
+## [0.3.3] — 2026-09-12
+
+- **The cursor lands on the character epubveri named, on three kinds of
+  document where it did not.** All three come from one thing: the offset the
+  results panel hands Sigil is a position in *Code View's* document, and Code
+  View does not count characters the way Python does. KevinH set out the
+  difference on MobileRead 375136 #39 — Qt holds the text as `QChar`s, which
+  are UTF-16 code units, with carriage returns stripped on load.
+
+  Each was measured against 474 real books before it was written, because
+  "handle encodings properly" is the kind of fix that can cost more than it
+  buys:
+
+    * **Line breaks.** `str.splitlines()` breaks on `\u2028`, `\u2029`,
+      `\x85`, `\f` and `\v`; epubveri counts `\n`. One of those characters
+      therefore gave this side a line epubveri had not counted, and every
+      finding after it in that file pointed a whole line away. **4 of 474
+      books carry one**, 35 occurrences between them.
+    * **Astral characters.** One emoji or mathematical letter is one Python
+      character and two QChars, so every finding after one was a position
+      early. **1 of 474 books**, with 221 of them.
+    * **Carriage returns**, which were already right and are now *held*
+      right. Sigil strips them on load and writes them back only on Windows,
+      so Code View never counts them — and Python's text mode translates
+      `\r\n` by default, so neither did we. That is a default, not a
+      decision: adding `newline=""` to one `open()` call moves every finding
+      past line 1 on **61% of real books**, on Windows alone, where nobody
+      developing this would see it. A test now fails if anyone does.
+
+  All three are invisible on macOS with ASCII content, which is where this
+  plugin is developed, and each test was checked by breaking the behaviour and
+  watching it fail.
+
+- **Nothing else changed.** In particular the plugin already validates only
+  what `copy_book_contents_to` hands it and never the original `.epub` path or
+  the modified flag, which is what KevinH asks validators to do in #41; that
+  has been true since 0.1.1.
+
 ## [0.3.2] — 2026-09-10
 
 - **A book's documents are read once each rather than once per finding.**

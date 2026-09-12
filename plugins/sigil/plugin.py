@@ -589,12 +589,49 @@ def _build_epub(bk, destdir):
     return epub_path, workdir
 
 
-def _line_offsets(text):
-    """Character offset of the start of each 1-based line."""
+def _qchar_len(text):
+    """Length of `text` in the units Sigil's editor counts.
+
+    **Code View holds the document as Qt `QChar`s, which are UTF-16 code
+    units** — KevinH, MobileRead 375136 #39. A Python string counts code
+    points, and the two agree for everything in the Basic Multilingual Plane
+    and disagree for everything above it: one emoji is one Python character
+    and two QChars. Counting Python characters therefore places the cursor
+    one position early for each astral character earlier in the file.
+
+    Measured before it was written, because "handle Unicode properly" is the
+    kind of fix that can cost more than it buys: **1 of 474 real books** has
+    any astral character at all (221 of them, in a linear-algebra title using
+    mathematical alphanumerics). Rare, and free to be right about.
+    """
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _line_table(text):
+    """`(offsets, lines)` — where each 1-based line starts, in QChars.
+
+    **Split on `\n` and nothing else, because that is what epubveri counts.**
+    `str.splitlines()` also breaks on `\v`, `\f`, `\x1c`-`\x1e`, `\x85`,
+    `\u2028` and `\u2029`; epubveri's line number is a count of `\n` bytes.
+    One of those characters in a document therefore made this table gain a
+    line that epubveri had not counted, and every finding after it landed a
+    whole line away. **4 of 474 real books carry one** — 35 occurrences of
+    `\u2029`, `\u2028` and `\x85` between them.
+
+    Carriage returns need no handling here and that is worth stating, because
+    it is true by accident and one keyword would undo it. Sigil strips CRs
+    when it loads a file and only writes them back on Windows, so Code View's
+    offsets never count them — and `open()` in text mode translates `\r\n`
+    to `\n` by default, so neither do ours. Pass `newline=""` to that call
+    and every finding past line 1 moves on **61% of real books**, on Windows
+    only, where nobody here would see it.
+    """
+    lines = text.split("\n")
     offsets = [0]
-    for line in text.splitlines(True):
-        offsets.append(offsets[-1] + len(line))
-    return offsets
+    for line in lines:
+        # `+ 1` for the newline that `split` removed; it is one QChar.
+        offsets.append(offsets[-1] + _qchar_len(line) + 1)
+    return offsets, lines
 
 
 def _char_offset(workdir, location, line, column, cache=None):
@@ -606,11 +643,11 @@ def _char_offset(workdir, location, line, column, cache=None):
     line, and an error here moves the cursor rather than merely mislabelling
     it.
 
-    `_line_offsets` is 0-based (`offsets[0]` is where line 1 starts) and
+    `_line_table` is 0-based (`offsets[0]` is where line 1 starts) and
     epubveri's line numbers are 1-based, so line N starts at `offsets[N - 1]`.
     Indexing it directly with the line number put every finding one line late:
     reported 283, highlighted 284. Only running it in Sigil could show that —
-    the test that existed checked `_line_offsets` alone and passed throughout.
+    the test that existed checked the line table alone and passed throughout.
 
     **`cache` is a per-run `{location: offsets}` and is why this is not the
     slowest thing the plugin does.** Findings come one per call, but a book's
@@ -635,17 +672,27 @@ def _char_offset(workdir, location, line, column, cache=None):
     if location not in cache:
         path = os.path.join(workdir, location.replace("/", os.sep))
         try:
+            # **Text mode, default newline handling** — see `_line_table`.
             with open(path, "r", encoding="utf-8", errors="replace") as handle:
-                cache[location] = _line_offsets(handle.read())
+                cache[location] = _line_table(handle.read())
         except OSError:
             # Cached as a miss too: an unreadable file is unreadable for every
             # finding in it, and retrying per finding is the same waste in a
             # slower form.
             cache[location] = None
-    offsets = cache[location]
-    if offsets is None or line > len(offsets):
+    table = cache[location]
+    if table is None:
         return None
-    return offsets[line - 1] + max((column or 1) - 1, 0)
+    offsets, lines = table
+    if line > len(lines):
+        return None
+    # The column is a count of **code points** into the line (epubveri's
+    # `Position::of_offset` counts chars, not bytes, and says so). Slicing the
+    # line by it therefore gives the text before the finding, and measuring
+    # *that* in QChars is the conversion Code View needs. Doing the arithmetic
+    # on the column directly would assume the two units are the same.
+    before = lines[line - 1][:max((column or 1) - 1, 0)]
+    return offsets[line - 1] + _qchar_len(before)
 
 
 def _fail(bk, message):
