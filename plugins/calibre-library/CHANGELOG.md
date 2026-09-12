@@ -1,5 +1,205 @@
 # Changelog — epubveri library for calibre
 
+## [0.4.0] — 2026-09-12
+
+- **A scan is kept, so the report survives calibre closing.** *Show the last
+  report* used to mean "this session"; now the last two scans of each library
+  are on disk and it means the last one, whenever that was. Nothing is read at
+  startup — the file is opened when you ask for the report, so a plugin you
+  have installed and are not using costs nothing.
+
+  Kept even when a scan finds nothing, which is the case worth stating: a
+  library that came back clean is exactly the baseline a later comparison
+  wants, and a scan is only cheap to repeat until it is ten minutes long.
+
+  **Filed under calibre's own id for the library**, which is the one guard
+  here that is structural rather than checked: a report names books by id, an
+  id means a different book in another library, and a stored report simply is
+  not there to load against the wrong books.
+
+  Nothing else is guarded, on purpose. Books get added, repaired and deleted
+  after a scan — the report is a dated observation and it carries its date,
+  its book count and its epubveri version so you can judge the drift. Silently
+  dropping ids that no longer resolve would make it a worse observation, not a
+  safer one.
+
+- **Two scans can be compared.** *Compare with the previous scan* subtracts
+  them: one row per rule, books before, books after, and the change — `RSC-005
+  … 181 → 12`. Rules that did not move are hidden until asked for, and the
+  ordering is by **how far a row moved in either direction**, because a row on
+  400 books that did not budge is the least interesting line in a comparison
+  and a regression is the most.
+
+  This is the question no single report can answer, and the one this family of
+  tools is shaped around: epubveri finds, epubsana repairs, *did that help*.
+
+  **When the two scans were run by different versions of epubveri, the window
+  says so.** A rule we added, changed or stopped reporting looks exactly like
+  a book that was repaired, and nothing here can tell those apart. Refusing to
+  compare across versions would be worse — most comparisons a user makes will
+  span a release, because our releases are more frequent than their scans.
+
+- **The entry in the plugin list is one line.** It ran to three where
+  calibre's own run to one — *"Copy a book from one calibre library to
+  another"* — so in a column of short rows ours was the tall one, which reads
+  as a plugin that needs explaining. It no longer restates the plugin's own
+  name either, which the row above it already carries.
+
+  What it gives up is the cross-reference to the editor plugin, which was put
+  there because calibre's plugin *type* files the two under different headings
+  and cannot say they belong together. That argument was real and it lost to a
+  worse cost: the reference sat three lines into a paragraph nobody finishes.
+  It is in the README, in the forum thread, and now on the settings page
+  beside the validator, where somebody is already reading.
+
+- **A selection scan is shown but not kept as a baseline.** Checking five
+  selected books is a useful thing to do and a ruinous thing to measure three
+  thousand against: every rule those five books do not happen to contain would
+  read as a rule that had been repaired. Only a whole-library scan becomes the
+  thing a later comparison subtracts from, and both sides of a comparison come
+  off disk for the same reason.
+
+- **The settings page is short instead of tall** (owner). It had grown a
+  section per release — what the report ranks, how many books at once, the
+  validator, the saved reports — and four framed group boxes down a column
+  made it taller than the dialog that opens it: 432 px of content in a window
+  that shows less.
+
+  It is four bold headings, a dimmed line under each, and seven one-line
+  controls. **The page is short because its text is short**: each long
+  explanation is the control's tooltip, which is where something you read once
+  belongs rather than permanently occupying the page.
+
+  The dimmed lines are a correction to the first attempt at that, which had
+  the headings and nothing else and was *too* bare — a column of words with no
+  hint what ranking a usage note would do to you. One line a section is the
+  middle term, and it costs about 14 px where a paragraph cost 60.
+
+  **A tabbed version shipped in between and was withdrawn.** It fixed the
+  height and brought something worse: on the owner's machine, clicking one
+  particular tab dropped calibre's modal Customize dialog behind the
+  Preferences window, where the first two tabs were covered, clicks landed on
+  a window the modal had blocked, and only Escape got out. It was never
+  reproduced here — the real dialog, real mouse events, with and without a
+  parent window — and the dialog, its modality and its placement all belong to
+  calibre. What goes inside it is ours, so the tab widget went. The class
+  docstring says so where someone would go to add it back.
+
+  Three things measured while rendering it, each a real defect:
+
+    * **calibre wraps this page in a `QScrollArea`**, so an over-wide page is a
+      horizontal scrollbar rather than a wider window. Ours was 704 px against
+      a 682 px viewport, because word-wrapped paragraphs and checkbox labels —
+      which do not wrap at all — demand width. Now 388.
+    * The spin box showed `utomatic (8)`: a `QSpinBox` sizes itself to its
+      number range, not to its special value text, and the range is 0-8. Its
+      minimum width is measured off its own font now, rather than padded by a
+      guess that would fit English and clip German.
+    * The saved-report size printed `0.0 MB` directly above a button offering
+      to delete it, because a real pair of saved scans is about 20 KB. The
+      megabyte unit came from the 18 000-book estimate, where it is right.
+
+- **Preferences says how much is stored and can delete it.** A saved report
+  holds the titles of the books each defect was found in, which is not what
+  anyone expects a validator to leave in a config folder unless told. The size
+  is shown beside a button that removes it; both were measured before any of
+  this was written — 474 real books produce 0.13 MB of JSON, 0.02 MB gzipped,
+  so even an 18 000-book library lands under a megabyte for both slots.
+
+- **Found by running it rather than by reading it**: the comparison table and
+  the CSV that same window writes came out in different orders, because the
+  table was left to sort itself and Qt chose the message id. One set of rows
+  with two orders is exactly the thing nobody notices until they are holding
+  both artefacts. Now pinned by a test that compares the two.
+
+## [0.3.0] — 2026-09-12
+
+- **The report window stays open when you click a row.** maddz reported it
+  (MobileRead 375207 #14) on a 7 912-book library that takes eight minutes:
+  one click on a row to see which books carry a defect, and the window — and
+  the scan behind it — was gone.
+
+  The window closed because it was *modal*, and that was not a detail. A modal
+  dialog is the only thing you can touch while it is up, so filtering the
+  library view behind one would have shown nobody anything; closing was the
+  only way to hand the books over. It is modeless now, so a row is a question
+  the report can be asked over and over, and the next row after that.
+
+  Two consequences worth stating. A second scan closes the report the first one
+  left, rather than leaving two windows claiming to describe the same library.
+  And switching libraries closes it — the report names books by id, an id means
+  a different book in another library, and marking those would be worse than
+  showing nothing.
+
+- **Three menu entries that existed only as code.** *Show the last report*
+  brings a closed window back without re-reading a book; *Show books with no
+  EPUB* finds the ones a scan counted but could not look at; *Clear the marks
+  it left* removes this plugin's own marks and nobody else's.
+
+  All three were written for 0.1.0, with the reasoning, and **none of them was
+  ever connected to the menu** — the commit that added them describes the menu
+  it did not change. So the answer to maddz's report had been sitting in the
+  source for five days with no way to ask for it. `Clear the marks` had a
+  second defect underneath the first: it called a method that was never
+  written, which nothing noticed because nothing could reach it. Both halves
+  are fixed and both are now tested.
+
+  Each entry is greyed out when there is nothing for it to do, and each can be
+  given a keyboard shortcut under Preferences → Advanced → Shortcuts.
+
+- **Export writes a per-book CSV as well as the report.** DNSB asked for one
+  (375207 #13): one row per book and defect — book id, title, message, rule,
+  severity, and **how many times that book trips it**.
+
+  That last column is why this is not a one-line change. A row of the report
+  held a *set* of book ids, which can say that 181 books carry a defect and
+  cannot say that one of them carries it forty times. It counts per book now.
+
+  Both exports follow the filter the window is showing, because a checkbox that
+  changes the window and not the file would make two artefacts out of one
+  report.
+
+- **A report says what it is a report of.** The window carries a second line,
+  and both exports and the clipboard carry the same facts: when the scan ran,
+  how long it took and how many books at once, which epubveri, which plugin,
+  which calibre, the operating system and the core count. *What this scan was*
+  in the Copy menu puts them on the clipboard as plain text.
+
+  Two reasons, and the first is the one that makes a stored report honest. **A
+  report is a dated observation, not a statement about the library today**
+  (owner): books get added, repaired and removed, and the date and book count
+  beside the findings are what let a reader judge how far it has drifted.
+  Comparing two reports needs the epubveri version for the same reason — the
+  difference between them can be the books or it can be our release notes, and
+  without the version there is no way to tell which.
+
+  The second is a use the owner named: a user who posts "1 000 books in 48
+  seconds" is telling other people something they can act on only if the
+  cores, the worker count and the version are beside the number.
+
+  The operating system is named the way its own users name it — `macOS 26.6.2`
+  rather than Python's `macOS-26.6.2-arm64-arm-64bit-Mach-O`, which is
+  accurate and is not a thing anyone would type into a forum post.
+
+- **Neither half of the toolbar button starts a scan, and it keeps its
+  arrow.** A plain click used to repeat whichever scope was used last, which
+  the README has said it does not do since 0.1.0 — the line that would have
+  made that true was never committed, so for five days a stray click could
+  start a ten-minute scan whose scope nothing on the button named.
+
+  The obvious fix cost something real: it dropped the drop-down arrow, and
+  every other menu-bearing button in calibre has one, so ours stopped looking
+  like part of the application. The arrow is back, and the body of the button
+  — which that mode would otherwise wire to the action — opens the same menu
+  the arrow does. Both halves do one thing and neither can start ten minutes
+  of work by accident.
+
+- **Preferences said the validator was shared with the editor plugin. It is
+  not**, and has never been: the two keep separate copies on purpose, because a
+  library scan holds the binary open for ten minutes and Windows will not let a
+  running executable be overwritten. The sentence told a user that installing
+  either plugin was enough for both.
+
 ## [0.2.0] — 2026-09-10
 
 - **The scan validates several books at once, and you choose how many.**

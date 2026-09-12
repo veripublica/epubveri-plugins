@@ -36,7 +36,9 @@ them, and opening one in Edit Book shows the findings in place.
 import os
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from datetime import datetime
 
+from calibre_plugins.epubveri_library import PLUGIN_VERSION
 from calibre_plugins.epubveri_library.client import runner
 from calibre_plugins.epubveri_library.client.envelope import (
     EnvelopeError, SEVERITY_ORDER)
@@ -61,7 +63,7 @@ class RuleGroup:
     """One row of the report: a single defect, across the whole library."""
 
     __slots__ = ('key', 'code', 'rule', 'violation_kind', 'name', 'severity',
-                 'example', 'varies', 'findings', 'book_ids')
+                 'example', 'varies', 'findings', 'book_counts')
 
     def __init__(self, key, finding):
         self.key = key
@@ -82,11 +84,18 @@ class RuleGroup:
         #: running this over real books, where it was the top row.
         self.varies = False
         self.findings = 0
-        self.book_ids = set()
+        #: `{book_id: findings in that book}` rather than a set of ids. The
+        #: set was all the table needed — a row is ranked by how many books
+        #: carry it, not by how often — but the per-book export cannot be
+        #: derived from it: "this book trips this rule" and "this book trips
+        #: it forty times" are the difference between a list and a report, and
+        #: DNSB asked for the second (MobileRead 375207 #13). Counting costs
+        #: the same dictionary the set already was.
+        self.book_counts = {}
 
     def add(self, finding, book_id):
         self.findings += 1
-        self.book_ids.add(book_id)
+        self.book_counts[book_id] = self.book_counts.get(book_id, 0) + 1
         if not self.varies and finding.message != self.example:
             self.varies = True
         # Keep the worst severity seen. A single id can arrive at two levels
@@ -96,8 +105,19 @@ class RuleGroup:
             self.severity = finding.severity
 
     @property
+    def book_ids(self):
+        """The books this row names, as a set.
+
+        A fresh set per call, which is why the callers that union several rows
+        together do so rather than mutating what a group holds. Kept as a
+        property instead of a field so that the counts cannot disagree with
+        the ids the way two stored collections can.
+        """
+        return set(self.book_counts)
+
+    @property
     def books(self):
-        return len(self.book_ids)
+        return len(self.book_counts)
 
     @property
     def label(self):
@@ -161,6 +181,70 @@ class BookResult:
         self.error = None
 
 
+def describe_machine():
+    """The facts a scan was carried out under, as `(label, value)` pairs.
+
+    **A report is a dated observation, not a statement about the library
+    today** (owner, 2026-09-12), and that is what makes these load-bearing
+    rather than decoration. Two reports of the same library can differ because
+    the books changed *or* because the validator did; without the version
+    beside each one there is no way to tell, and a user comparing them would
+    credit their own repairs with our release notes. The date and the book
+    count are what tell a reader how far a stored report has drifted from the
+    library it describes — the owner's answer to staleness, and a better one
+    than any check we could run for them.
+
+    The machine half is here for a use the owner named: a user posting "1 000
+    books in N seconds on M cores" only says something another user can act on
+    if the cores, the worker count and the version are beside the number.
+
+    Nothing here may raise. It is read on a worker thread during a ten-minute
+    job, and no fact in it is worth failing a scan for.
+    """
+    import platform
+    import sys
+    pairs = []
+
+    def add(label, value):
+        if value:
+            pairs.append((label, str(value)))
+
+    # **Named the way its own users name it**, not the way `platform.platform()`
+    # spells it. That call returns `macOS-26.6.2-arm64-arm-64bit-Mach-O`, which
+    # is accurate and is not something anyone would type into a forum post —
+    # and this line exists to be pasted into one. `platform.release()` is no
+    # good on macOS either: it gives the Darwin kernel version (25.6.0), which
+    # matches no number Apple has ever shown a user.
+    try:
+        if sys.platform == 'darwin':
+            add('system', 'macOS %s' % platform.mac_ver()[0])
+        elif os.name == 'nt':
+            release, build = platform.win32_ver()[:2]
+            add('system', ('Windows %s (%s)' % (release, build)).strip())
+        else:
+            add('system', ('%s %s' % (platform.system(),
+                                      platform.release())).strip())
+        add('processor', platform.machine())
+    except Exception:                                   # noqa: BLE001
+        pass
+    try:
+        import psutil
+        physical = psutil.cpu_count(logical=False)
+    except Exception:                                   # noqa: BLE001
+        physical = None
+    logical = os.cpu_count()
+    if physical and logical and physical != logical:
+        add('cores', '%d physical, %d logical' % (physical, logical))
+    else:
+        add('cores', physical or logical)
+    try:
+        from calibre.constants import __version__ as calibre_version
+        add('calibre', calibre_version)
+    except Exception:                                   # noqa: BLE001
+        pass
+    return pairs
+
+
 class ScanReport:
     """Everything one scan produced. Built by `scan_books`, read by the dialog."""
 
@@ -175,6 +259,43 @@ class ScanReport:
         self.tool_version = ''
         self.cancelled = False
         self.note = None
+        #: When the scan started, as a local `datetime`. Local rather than UTC
+        #: because the only reader is the person who ran it, and "yesterday
+        #: evening" is what they are trying to remember.
+        self.started_at = None
+        #: How many books were validated at once. Part of the scan's
+        #: conditions, not of its findings — a rate means nothing without it.
+        self.workers = 1
+        #: `(label, value)` from `describe_machine()`, filled by the worker.
+        self.machine = []
+        #: `'library'` or `'selection'`. **Only a whole-library scan is kept
+        #: as a baseline**: a spot check of five books is a perfectly good
+        #: report and a ruinous thing to compare three thousand against, since
+        #: every rule the selection does not happen to contain reads as a rule
+        #: that was repaired.
+        self.scope = 'library'
+
+    def conditions(self):
+        """Everything about *this* scan rather than about the library.
+
+        One function, so the window, the clipboard and both CSVs cannot
+        describe the same run differently.
+        """
+        pairs = []
+        if self.started_at is not None:
+            pairs.append(('scanned', self.started_at.strftime('%Y-%m-%d %H:%M')))
+        pairs.append(('books', '%d of %d%s'
+                      % (self.scanned, self.requested,
+                         ', cancelled' if self.cancelled else '')))
+        if self.elapsed:
+            rate = self.elapsed / self.scanned if self.scanned else 0.0
+            pairs.append(('took', '%.0f s (%.3f s/book)' % (self.elapsed, rate)))
+        pairs.append(('at once', str(self.workers)))
+        if self.tool_version:
+            pairs.append(('epubveri', self.tool_version))
+        pairs.append(('plugin', PLUGIN_VERSION))
+        pairs.extend(self.machine)
+        return pairs
 
     def add(self, finding, book_id):
         key = group_key(finding)
@@ -351,6 +472,12 @@ def scan_books(binary, jobs, report=None, abort=None, notify=None,
     report.requested = len(jobs)
     started = time.time()
     workers = max(1, int(workers or 1))
+    # Read here rather than by the caller, so that what the report says about
+    # a run is what the run did — a worker count decided elsewhere and a
+    # worker count used could otherwise drift apart.
+    report.started_at = datetime.now()
+    report.workers = workers
+    report.machine = describe_machine()
     # **A trace, sized by the library rather than by the book count.** DNSB
     # scanned 18 000 books in an hour and a half (MobileRead 375207 #2, #8) and
     # the log said two things: that it started, and — if it reached the end —

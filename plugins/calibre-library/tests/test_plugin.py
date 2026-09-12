@@ -30,6 +30,7 @@ import time
 import types
 import unittest
 import zipfile
+from datetime import datetime
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 PLUGIN_DIR = os.path.dirname(TESTS_DIR)
@@ -156,8 +157,14 @@ class PinnedPrefs(object):
     reader of either suite meets one convention.
     """
 
+    #: **Every key any test writes**, which is the whole contract — a key
+    #: missing from this tuple is a setting a test changes in the *running*
+    #: calibre and never puts back. `workers` was missing for exactly one
+    #: afternoon and one test, and it left the owner's own preference at 1;
+    #: caught by looking at a screenshot of the settings page, not by
+    #: anything failing. Add the key here in the same edit that writes it.
     KEYS = ('show_warning', 'show_usage', 'show_advisory', 'autoupdate',
-            'scope')
+            'workers')
 
     def setUp(self):
         self._saved = {key: cfg.prefs[key] for key in self.KEYS}
@@ -326,6 +333,26 @@ class CollectTests(unittest.TestCase):
             jobs = scan.collect_jobs(StubDB({5: path}), [5], report)
             self.assertEqual(jobs, [(5, 'Book 5', path)])
             self.assertEqual(report.no_format, [])
+
+
+class ConditionsTests(unittest.TestCase):
+    """What a run records about itself, read off a real `scan_books` call."""
+
+    def test_a_scan_records_the_machine_it_ran_on(self):
+        report = scan.ScanReport()
+        scan.scan_books('/nonexistent/epubveri', [], report=report, workers=3)
+        self.assertEqual(report.workers, 3)
+        self.assertIsNotNone(report.started_at)
+        labels = dict(report.machine)
+        self.assertIn('system', labels)
+        self.assertIn('cores', labels)
+        text = dict(report.conditions())
+        self.assertIn('plugin', text)
+
+    def test_describe_machine_never_raises(self):
+        """Read on a worker thread during a ten-minute job. No fact in it is
+        worth failing a scan for, so the contract is that it returns."""
+        self.assertTrue(scan.describe_machine())
 
 
 class ScanTests(unittest.TestCase):
@@ -691,6 +718,98 @@ class DialogTests(PinnedPrefs, unittest.TestCase):
         self.assertIn('violation_kind', text.splitlines()[0])
         self.assertIn('element_not_allowed', text)
 
+    def test_everything_that_leaves_the_window_says_what_the_scan_was(self):
+        """A report is a dated observation (owner, 2026-09-12).
+
+        Which epubveri, which machine, when, how long — beside the findings
+        and not only in the window, or a file read next month is a claim with
+        no date on it. Asserted on both exports and on the clipboard, because
+        three copies of one idea are three chances to forget one.
+        """
+        report = self._report()
+        report.started_at = datetime(2026, 9, 12, 15, 30)
+        report.tool_version = '0.14.3'
+        report.workers = 8
+        report.elapsed = 68.9
+        report.machine = [('cores', '10'), ('calibre', '9.14.0')]
+        dialog = self._dialog(report)
+        for text in (dialog._as_csv(dialog._with_preamble(dialog._as_rows())),
+                     dialog._as_csv(dialog._with_preamble(
+                         dialog._as_book_rows())),
+                     dialog._conditions_text(),
+                     dialog.conditions.text()):
+            self.assertIn('0.14.3', text)
+            self.assertIn('2026-09-12 15:30', text)
+            self.assertIn('10', text)
+
+    def test_the_preamble_is_separated_from_the_table(self):
+        """A blank row, so nothing reads the two as one block."""
+        report = self._report()
+        report.started_at = datetime(2026, 9, 12, 15, 30)
+        dialog = self._dialog(report)
+        lines = dialog._as_csv(
+            dialog._with_preamble(dialog._as_rows())).splitlines()
+        blank = lines.index('')
+        self.assertTrue(lines[blank + 1].startswith('message,'))
+
+    def test_showing_books_leaves_the_window_open(self):
+        """maddz's report (MobileRead 375207 #14), as a test.
+
+        The dialog used to `accept()` here, which spent an eight-minute scan
+        on one click. `result()` stays 0 and `isVisible()` is not consulted —
+        the window is never `show()`n in a test — so what is asserted is that
+        the dialog did not finish itself.
+        """
+        dialog = self._dialog(self._report())
+        finished = []
+        dialog.finished.connect(finished.append)
+        dialog._double_clicked(dialog.table.topLevelItem(0), 0)
+        self.assertEqual(self.shown[0][0], {1, 2})
+        self.assertEqual(finished, [])
+
+    def test_each_row_hands_over_its_own_books(self):
+        """Two rows in succession, each with its own set.
+
+        **Not a guard on the window staying open** — checked by breaking
+        `_show_ids` and watching this still pass, because a dialog that has
+        accepted still answers a method call in a test. The one that fails is
+        the one above; this pins which books a row names.
+        """
+        dialog = self._dialog(self._report())
+        dialog._double_clicked(dialog.table.topLevelItem(0), 0)
+        dialog._double_clicked(dialog.table.topLevelItem(1), 0)
+        self.assertEqual([ids for ids, _label in self.shown], [{1, 2}, {3}])
+
+    def test_the_book_csv_counts_each_book_separately(self):
+        """A defect on two books, forty times in one of them.
+
+        The row-level report cannot say that — it holds one total — and a set
+        of book ids could not have carried it either. This is what DNSB asked
+        for (MobileRead 375207 #13).
+        """
+        report = scan.ScanReport()
+        report.scanned = 2
+        report.requested = 2
+        for _ in range(40):
+            report.add(make_finding(severity='error', params=['img']), 1)
+        report.add(make_finding(severity='error', params=['img']), 2)
+        report.books = [scan.BookResult(1, 'Loud', 'a.epub'),
+                        scan.BookResult(2, 'Quiet', 'b.epub')]
+        dialog = self._dialog(report)
+        rows = list(dialog._as_book_rows())
+        self.assertEqual(rows[0][:2], ('book_id', 'title'))
+        self.assertEqual([(r[1], r[7]) for r in rows[1:]],
+                         [('Loud', 40), ('Quiet', 1)])
+
+    def test_the_book_csv_obeys_the_filter_the_window_shows(self):
+        report = self._report()
+        report.books = [scan.BookResult(book_id, 'B%d' % book_id, 'x.epub')
+                        for book_id in (1, 2, 3)]
+        dialog = self._dialog(report)
+        self.assertEqual(len(list(dialog._as_book_rows())), 4)   # header + 3
+        dialog.warnings.setChecked(False)
+        self.assertEqual(len(list(dialog._as_book_rows())), 3)   # header + 2
+
     def test_the_summary_names_the_scan(self):
         dialog = self._dialog(self._report())
         self.assertIn('3 books scanned', dialog.summary.text())
@@ -701,6 +820,300 @@ class DialogTests(PinnedPrefs, unittest.TestCase):
         report.scanned = 1
         dialog = self._dialog(report)
         self.assertIn('Cancelled after 1 of 3', dialog.summary.text())
+
+
+class StoreTests(unittest.TestCase):
+    """Writing a report and reading it back.
+
+    **Pointed at a temporary directory**, because `store` resolves its path
+    through `install.data_dir()`, which is the *running* calibre's config
+    folder. A suite that used it would write into the settings of whoever ran
+    the tests — the mistake `PinnedPrefs` exists for, one directory along.
+    """
+
+    def setUp(self):
+        import calibre_plugins.epubveri_library.store as store
+        self.store = store
+        self.tmp = tempfile.mkdtemp()
+        self._saved = store.data_dir
+        store.data_dir = lambda create=True: self.tmp
+
+    def tearDown(self):
+        self.store.data_dir = self._saved
+
+    def _report(self):
+        report = scan.ScanReport()
+        report.requested = 3
+        report.scanned = 3
+        report.elapsed = 12.5
+        report.workers = 4
+        report.tool_version = '0.14.3'
+        report.started_at = datetime(2026, 9, 12, 15, 30)
+        report.machine = [('system', 'macOS 26.6.2'), ('cores', '10')]
+        for book_id in (11, 12):
+            report.add(make_finding(severity='error', params=['img']), book_id)
+        report.add(make_finding(severity='error', params=['img']), 11)
+        report.add(make_finding(severity='warning', params=['table']), 13)
+        report.books = [scan.BookResult(book_id, 'B%d' % book_id, '/x.epub')
+                        for book_id in (11, 12, 13)]
+        report.no_format.append(scan.BookResult(14, 'No EPUB', None))
+        return report
+
+    def test_a_saved_report_comes_back_the_same_report(self):
+        """Asserted through the window rather than through the dict it was
+        written from, which would only prove the writer agrees with itself."""
+        qt_app()
+        from qt.core import QWidget
+        from calibre_plugins.epubveri_library.results import ResultsDialog
+        original = self._report()
+        self.assertTrue(self.store.save('lib-1', original))
+        restored = self.store.load('lib-1')
+        self.assertIsNotNone(restored)
+        parent = QWidget()
+        nothing = lambda ids, label: None                # noqa: E731
+        before = ResultsDialog(parent, original, nothing)
+        after = ResultsDialog(parent, restored, nothing)
+        self.assertEqual(after._as_csv(after._with_preamble(after._as_rows())),
+                         before._as_csv(before._with_preamble(before._as_rows())))
+        self.assertEqual(
+            after._as_csv(after._with_preamble(after._as_book_rows())),
+            before._as_csv(before._with_preamble(before._as_book_rows())))
+
+    def test_book_ids_come_back_as_numbers(self):
+        """JSON object keys are strings whatever they went in as, and a string
+        book id marks nothing — `set_marked_ids` would file it under a book
+        that does not exist and the search would come back empty."""
+        self.store.save('lib-1', self._report())
+        restored = self.store.load('lib-1')
+        for group in restored.groups.values():
+            for book_id in group.book_counts:
+                self.assertIsInstance(book_id, int)
+
+    def test_the_unreadable_list_is_rebuilt_rather_than_stored(self):
+        report = self._report()
+        report.books[1].status = 'failed'
+        report.books[1].error = 'could not be read'
+        report.unreadable.append(report.books[1])
+        self.store.save('lib-1', report)
+        restored = self.store.load('lib-1')
+        self.assertEqual([r.book_id for r in restored.unreadable], [12])
+        self.assertEqual(len(restored.no_format), 1)
+
+    def test_saving_demotes_the_last_scan(self):
+        first = self._report()
+        first.tool_version = 'first'
+        second = self._report()
+        second.tool_version = 'second'
+        self.store.save('lib-1', first)
+        self.store.save('lib-1', second)
+        self.assertEqual(self.store.load('lib-1').tool_version, 'second')
+        self.assertEqual(
+            self.store.load('lib-1', self.store.PREVIOUS).tool_version,
+            'first')
+
+    def test_each_library_has_its_own_slots(self):
+        """The one guard that is structural: a report cannot be shown against
+        another library's books, because it is not there to load."""
+        self.store.save('lib-1', self._report())
+        self.assertIsNone(self.store.load('lib-2'))
+        self.assertFalse(self.store.exists('lib-2'))
+
+    def test_a_file_this_code_cannot_read_is_the_same_as_no_file(self):
+        self.store.save('lib-1', self._report())
+        path = self.store._path('lib-1', self.store.CURRENT)
+        import gzip
+        with gzip.open(path, 'wb') as handle:
+            handle.write(b'{"format": 999}')
+        self.assertIsNone(self.store.load('lib-1'))
+
+    def test_a_truncated_file_is_the_same_as_no_file(self):
+        """A scan interrupted mid-write. `load` may not raise into a menu."""
+        self.store.save('lib-1', self._report())
+        path = self.store._path('lib-1', self.store.CURRENT)
+        with open(path, 'wb') as handle:
+            handle.write(b'\x1f\x8b\x08truncated')
+        self.assertIsNone(self.store.load('lib-1'))
+
+    def test_the_scope_survives_a_round_trip(self):
+        """Which matters because only one scope may become a baseline."""
+        report = self._report()
+        report.scope = 'selection'
+        self.store.save('lib-1', report)
+        self.assertEqual(self.store.load('lib-1').scope, 'selection')
+
+    def test_asking_whether_a_report_exists_creates_nothing(self):
+        """The menu asks this every time it opens. A plugin that has been
+        installed and never used should leave nothing behind."""
+        import os as _os
+        empty = tempfile.mkdtemp()
+        self.store.data_dir = lambda create=True: empty
+        self.assertFalse(self.store.exists('lib-1'))
+        self.assertIsNone(self.store.load('lib-1'))
+        self.assertEqual(_os.listdir(empty), [])
+
+    def test_it_can_say_how_much_it_is_keeping_and_stop(self):
+        """A stored report holds book titles, so a user is owed both."""
+        self.store.save('lib-1', self._report())
+        self.store.save('lib-1', self._report())
+        self.store.save('lib-2', self._report())
+        files, total = self.store.stored_size()
+        self.assertEqual(files, 3)
+        self.assertGreater(total, 0)
+        self.assertEqual(self.store.forget_all(), 3)
+        self.assertEqual(self.store.stored_size(), (0, 0))
+        self.assertIsNone(self.store.load('lib-1'))
+
+    def test_saving_never_takes_a_scan_down_with_it(self):
+        self.store.data_dir = lambda create=True: '/dev/null/not-a-directory'
+        self.assertFalse(self.store.save('lib-1', self._report()))
+        self.assertIsNone(self.store.load('lib-1'))
+        self.assertFalse(self.store.exists('lib-1'))
+
+
+class CompareTests(unittest.TestCase):
+
+    def _report(self, rows, tool_version='0.14.3'):
+        """`rows` is `{construct: [book_id, ...]}`."""
+        report = scan.ScanReport()
+        report.tool_version = tool_version
+        report.scanned = 9
+        for name, book_ids in rows.items():
+            for book_id in book_ids:
+                report.add(make_finding(severity='error', params=[name]),
+                           book_id)
+        return report
+
+    def _comparison(self, before, after):
+        from calibre_plugins.epubveri_library.compare import Comparison
+        return Comparison(before, after)
+
+    def test_it_says_which_way_each_rule_went(self):
+        comparison = self._comparison(
+            self._report({'img': [1, 2, 3], 'table': [4], 'gone': [5]}),
+            self._report({'img': [1], 'table': [4, 6], 'new': [7]}))
+        states = {change.group.name: change.state
+                  for change in comparison.changes}
+        self.assertEqual(states, {'img': 'better', 'table': 'worse',
+                                  'gone': 'gone', 'new': 'new'})
+
+    def test_the_biggest_movement_comes_first_and_the_still_rows_last(self):
+        """Not the report's ordering. A row on 400 books that did not move is
+        the least interesting line in a comparison."""
+        comparison = self._comparison(
+            self._report({'still': list(range(400)), 'img': [1, 2, 3]}),
+            self._report({'still': list(range(400)), 'img': [1]}))
+        self.assertEqual([c.group.name for c in comparison.changes],
+                         ['img', 'still'])
+
+    def test_it_counts_rules_rather_than_findings(self):
+        comparison = self._comparison(
+            self._report({'img': [1, 2], 'table': [3]}),
+            self._report({'img': [1], 'table': [3, 4]}))
+        self.assertEqual(comparison.moved(), (1, 1))
+
+    def test_books_touched_ignores_rules_that_did_not_move(self):
+        comparison = self._comparison(
+            self._report({'still': [9], 'img': [1, 2]}),
+            self._report({'still': [9], 'img': [1]}))
+        self.assertEqual(comparison.books_touched(), {1, 2})
+
+    def test_two_versions_of_epubveri_are_not_the_same_validator(self):
+        same = self._comparison(self._report({'img': [1]}),
+                                self._report({'img': [1]}))
+        self.assertTrue(same.same_validator)
+        moved = self._comparison(
+            self._report({'img': [1]}, tool_version='0.14.2'),
+            self._report({'img': [1]}, tool_version='0.14.3'))
+        self.assertFalse(moved.same_validator)
+
+    def test_an_unknown_version_is_not_agreement(self):
+        """An older stored report may carry no version at all, and silence is
+        not the same as a match."""
+        comparison = self._comparison(self._report({'img': [1]}, ''),
+                                      self._report({'img': [1]}, ''))
+        self.assertFalse(comparison.same_validator)
+
+
+class CompareDialogTests(PinnedPrefs, unittest.TestCase):
+
+    def _dialog(self, before, after):
+        qt_app()
+        from qt.core import QWidget
+        from calibre_plugins.epubveri_library.compare import Comparison
+        from calibre_plugins.epubveri_library.results import CompareDialog
+        self.shown = []
+        return CompareDialog(
+            QWidget(), Comparison(before, after),
+            lambda ids, label: self.shown.append((ids, label)))
+
+    def _report(self, rows, tool_version='0.14.3'):
+        report = scan.ScanReport()
+        report.tool_version = tool_version
+        report.scanned = 9
+        report.started_at = datetime(2026, 9, 12, 15, 30)
+        for name, book_ids in rows.items():
+            for book_id in book_ids:
+                report.add(make_finding(severity='error', params=[name]),
+                           book_id)
+        return report
+
+    def test_unmoved_rules_are_hidden_until_asked_for(self):
+        dialog = self._dialog(self._report({'still': [9], 'img': [1, 2]}),
+                              self._report({'still': [9], 'img': [1]}))
+        self.assertEqual(dialog.table.topLevelItemCount(), 1)
+        dialog.unchanged.setChecked(True)
+        self.assertEqual(dialog.table.topLevelItemCount(), 2)
+
+    def test_the_window_and_its_export_agree_about_the_order(self):
+        """Found by running a real before/after, not by reading the code.
+
+        The first version enabled sorting without naming a column; Qt sorted on
+        the message id and the table came out in a different order from the CSV
+        the same window writes. Two orders for one set of rows is the kind of
+        thing nobody notices until they are comparing the two artefacts.
+        """
+        before = self._report({'a': [1, 2, 3, 4], 'b': [1, 2], 'c': [1]})
+        after = self._report({'a': [1], 'b': [1, 2, 3], 'c': [1]})
+        dialog = self._dialog(before, after)
+        dialog.unchanged.setChecked(True)
+        shown = [dialog.table.topLevelItem(i).change
+                 for i in range(dialog.table.topLevelItemCount())]
+        self.assertEqual([c.group.name for c in shown],
+                         [c.group.name for c in dialog._rows()])
+        # And that order is by how far a row moved, with the still one last.
+        self.assertEqual([c.group.name for c in shown], ['a', 'b', 'c'])
+
+    def test_a_different_validator_is_said_out_loud(self):
+        """The confound this window cannot resolve, so it names it."""
+        quiet = self._dialog(self._report({'img': [1, 2]}),
+                             self._report({'img': [1]}))
+        self.assertEqual(quiet.caveat.text(), '')
+        loud = self._dialog(self._report({'img': [1, 2]}, '0.14.2'),
+                            self._report({'img': [1]}, '0.14.3'))
+        self.assertIn('different versions', loud.caveat.text())
+
+    def test_the_summary_dates_both_scans(self):
+        dialog = self._dialog(self._report({'img': [1, 2]}),
+                              self._report({'img': [1]}))
+        self.assertIn('1 rule better, 0 worse', dialog.summary.text())
+        self.assertIn('2026-09-12 15:30', dialog.summary.text())
+
+    def test_the_csv_carries_both_scans_conditions(self):
+        dialog = self._dialog(self._report({'img': [1, 2]}, '0.14.2'),
+                              self._report({'img': [1]}, '0.14.3'))
+        rows = list(dialog._preamble())
+        labels = [row[0] for row in rows if row]
+        self.assertIn('before epubveri', labels)
+        self.assertIn('after epubveri', labels)
+
+    def test_showing_books_leaves_the_window_open(self):
+        dialog = self._dialog(self._report({'img': [1, 2]}),
+                              self._report({'img': [1]}))
+        finished = []
+        dialog.finished.connect(finished.append)
+        dialog._show_books()
+        self.assertEqual(self.shown[0][0], {1, 2})
+        self.assertEqual(finished, [])
 
 
 class ActionTests(unittest.TestCase):
@@ -722,6 +1135,119 @@ class ActionTests(unittest.TestCase):
         # A bare `marked:epubveri` is a substring match and would also select
         # whatever another plugin had marked `epubveri-something`.
         self.assertEqual(action.MARK_SEARCH, 'marked:"=epubveri"')
+
+    def test_every_report_method_is_reachable_from_the_menu(self):
+        """The defect that produced this release, as a test.
+
+        `show_last_report`, `show_books_without_epub` and `clear_marks` were
+        written for 0.1.0 with their reasoning, and `genesis` never mentioned
+        them — so the menu had two entries and the source had five answers.
+        Nothing failed, because dead code does not.
+
+        Read out of the source rather than off a running calibre: `genesis`
+        needs a real GUI, and the question here is whether the wiring is
+        *written*, which the text answers exactly.
+        """
+        import ast
+        path = os.path.join(PLUGIN_DIR, 'action.py')
+        with open(path, encoding='utf-8') as handle:
+            tree = ast.parse(handle.read(), path)
+        cls = next(node for node in tree.body
+                   if isinstance(node, ast.ClassDef)
+                   and node.name == 'EpubveriLibraryAction')
+        genesis = next(node for node in cls.body
+                       if isinstance(node, ast.FunctionDef)
+                       and node.name == 'genesis')
+        wired = {node.attr for node in ast.walk(genesis)
+                 if isinstance(node, ast.Attribute)}
+        for name in ('show_last_report', 'show_books_without_epub',
+                     'clear_marks'):
+            self.assertIn(name, wired,
+                          '%s is defined and nothing can reach it' % name)
+
+    def test_clear_marks_can_find_the_marks_it_left(self):
+        """`_marked_ids` did not exist while `clear_marks` was calling it.
+
+        Nothing caught that because the menu entry reaching `clear_marks` was
+        never connected, so the method had never run. The stub offers the
+        calibre 9.14 spelling only — `marked_ids` on the *view*, an instance
+        attribute rather than a class one — so a wrong path fails here.
+        """
+        import calibre_plugins.epubveri_library.action as action
+
+        class Data(object):
+            marked_ids = {3: 'epubveri', 4: 'somebody else', 5: 'epubveri'}
+
+        class DB(object):
+            data = Data()
+
+        stub = type('Stub', (), {'gui': type('G', (), {'current_db': DB()})()})()
+        found = action.EpubveriLibraryAction._marked_ids(stub)
+        self.assertEqual(found, {3, 5})
+
+    def test_marked_ids_is_empty_rather_than_angry_with_no_library(self):
+        """The menu asks this before anything is open."""
+        import calibre_plugins.epubveri_library.action as action
+        stub = type('Stub', (), {'gui': type('G', (), {})()})()
+        self.assertEqual(action.EpubveriLibraryAction._marked_ids(stub), set())
+
+    def test_neither_half_of_the_button_starts_a_scan(self):
+        """The button keeps calibre's drop-down arrow, which needs
+        `MenuButtonPopup` — and that mode wires the button's body to the
+        action. So the arrow is only safe while that connection goes to the
+        menu; `triggered` reaching `start` or `repeat_last` would put ten
+        minutes of work behind a stray click again.
+        """
+        import ast
+        from qt.core import QToolButton
+        import calibre_plugins.epubveri_library.action as action
+        self.assertIs(action.EpubveriLibraryAction.popup_type,
+                      QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        path = os.path.join(PLUGIN_DIR, 'action.py')
+        with open(path, encoding='utf-8') as handle:
+            tree = ast.parse(handle.read(), path)
+        cls = next(node for node in tree.body
+                   if isinstance(node, ast.ClassDef)
+                   and node.name == 'EpubveriLibraryAction')
+        genesis = next(node for node in cls.body
+                       if isinstance(node, ast.FunctionDef)
+                       and node.name == 'genesis')
+        connected = [node.args[0] for node in ast.walk(genesis)
+                     if isinstance(node, ast.Call)
+                     and isinstance(node.func, ast.Attribute)
+                     and node.func.attr == 'connect' and node.args]
+        targets = {node.attr for node in connected
+                   if isinstance(node, ast.Attribute)}
+        self.assertIn('show_menu', targets)
+        self.assertNotIn('start', targets)
+        self.assertNotIn('repeat_last', targets)
+
+    def test_only_a_whole_library_scan_becomes_a_baseline(self):
+        """A five-book selection opposite a three-thousand-book scan reads as
+        a library that was almost entirely repaired. Read out of the source,
+        since `finished` needs a calibre GUI to run."""
+        import ast
+        path = os.path.join(PLUGIN_DIR, 'action.py')
+        with open(path, encoding='utf-8') as handle:
+            tree = ast.parse(handle.read(), path)
+        cls = next(node for node in tree.body
+                   if isinstance(node, ast.ClassDef)
+                   and node.name == 'EpubveriLibraryAction')
+        finished = next(node for node in cls.body
+                        if isinstance(node, ast.FunctionDef)
+                        and node.name == 'finished')
+        saves = [node for node in ast.walk(finished)
+                 if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Attribute)
+                 and node.func.attr == 'save']
+        self.assertEqual(len(saves), 1)
+        guards = [node for node in ast.walk(finished) if isinstance(node, ast.If)
+                  and any(isinstance(c, ast.Call)
+                          and isinstance(c.func, ast.Attribute)
+                          and c.func.attr == 'save'
+                          for c in ast.walk(node))]
+        self.assertTrue(guards, 'store.save is not behind a scope check')
+        self.assertIn('scope', ast.dump(guards[-1].test))
 
     def test_show_books_marks_through_db_data(self):
         """The line that would have crashed, exercised rather than reasoned about.
@@ -831,20 +1357,15 @@ class ActionTests(unittest.TestCase):
         self.assertEqual(EpubveriLibraryPlugin.type, InterfaceActionBase.type)
         self.assertNotEqual(EpubveriLibraryPlugin.type, EditBookToolPlugin.type)
 
-    def test_each_plugin_still_names_the_other(self):
-        """What replaced the shared heading, and now the only thing joining
-        them in the list.
-
-        The category used to say "these two are one product". It does not any
-        more, so the descriptions have to — a user reading either entry should
-        learn the other exists.
-        """
+    def test_the_list_description_is_one_line(self):
+        """It ran to three lines in a column of one-liners. calibre's own are
+        around fifty characters — "Copy a book from one calibre library to
+        another" — so this is held to that order of length."""
         from calibre_plugins.epubveri_library import EpubveriLibraryPlugin
-        self.assertIn('epubveri', EpubveriLibraryPlugin.description.lower())
-        self.assertTrue(
-            any(word in EpubveriLibraryPlugin.description.lower()
-                for word in ('companion', 'editor', 'edit book')),
-            EpubveriLibraryPlugin.description)
+        description = EpubveriLibraryPlugin.description
+        self.assertLessEqual(len(description), 90, description)
+        self.assertNotIn('.', description[:-1],
+                         'more than one sentence: %s' % description)
 
     def test_the_apis_it_calls_exist(self):
         """Each of these was checked against calibre 9.14's source once. This
@@ -880,6 +1401,112 @@ class ConfigTests(PinnedPrefs, unittest.TestCase):
         self.assertFalse(cfg.prefs.defaults['show_usage'])
         self.assertFalse(cfg.prefs.defaults['show_advisory'])
         self.assertTrue(cfg.prefs.defaults['show_warning'])
+
+
+class ConfigWidgetTests(PinnedPrefs, unittest.TestCase):
+    """The settings page, built and saved.
+
+    **A tabbed page is exactly the refactor that drops a control silently**:
+    move a checkbox into a tab, forget its line in `save_settings`, and the
+    setting stops being saved with nothing failing anywhere. So this flips
+    every control away from its default, saves, and reads the file back.
+    """
+
+    def _widget(self):
+        qt_app()
+        return cfg.ConfigWidget()
+
+    def test_there_is_no_tab_widget(self):
+        """A tabbed version of this page shipped and was withdrawn: clicking
+        one tab dropped calibre's modal Customize dialog behind the
+        Preferences window on the owner's machine, and it was never reproduced
+        here. The dialog is calibre's; what goes inside it is ours, so the
+        component went. See the class docstring before putting it back."""
+        from qt.core import QTabWidget
+        self.assertIsNone(self._widget().findChild(QTabWidget))
+
+    def test_it_stays_short_enough_for_the_dialog_it_opens_in(self):
+        """The height that caused all of this. calibre's dialog wraps the page
+        in a scroll area, so an over-tall page is a scrollbar rather than a
+        bigger window — and an over-*wide* one is a horizontal scrollbar,
+        which is worse because nothing suggests scrolling sideways."""
+        widget = self._widget()
+        # The bound is the version that was too tall: four framed group boxes
+        # came to 432 px. Anything at or above that has undone the fix.
+        self.assertLess(widget.sizeHint().height(), 400)
+        self.assertLess(widget.minimumSizeHint().width(), 500)
+
+    def test_the_spin_box_fits_the_word_it_shows(self):
+        """It showed "utomatic (8)". A `QSpinBox` sizes itself to its number
+        range and not to its special value text, and the range here is 0-8."""
+        widget = self._widget()
+        text = widget.workers.specialValueText()
+        self.assertGreater(
+            widget.workers.minimumWidth(),
+            widget.workers.fontMetrics().horizontalAdvance(text))
+
+    def test_every_long_explanation_is_reachable(self):
+        """The paragraphs became tooltips; a tooltip nobody set is an
+        explanation that was deleted rather than moved."""
+        widget = self._widget()
+        for control in (widget.show_warning, widget.show_usage,
+                        widget.show_advisory, widget.autoupdate,
+                        widget.workers, widget.forget):
+            self.assertTrue(control.toolTip().strip(), control)
+
+    def test_each_section_says_something_before_you_hover(self):
+        """Bare headings read as *çok sade* — a column of words with no hint
+        what ranking a usage note would do to you. One dimmed line a section
+        is the middle term between that and the paragraphs that made the page
+        too tall."""
+        from qt.core import QLabel
+        widget = self._widget()
+        captions = [label for label in widget.findChildren(QLabel)
+                    if label.wordWrap()]
+        self.assertGreaterEqual(len(captions), 4)
+        for caption in captions:
+            self.assertTrue(caption.text().strip())
+
+    def test_every_control_still_reaches_the_settings_file(self):
+        widget = self._widget()
+        widget.show_warning.setChecked(False)
+        widget.show_usage.setChecked(True)
+        widget.show_advisory.setChecked(True)
+        widget.autoupdate.setChecked(False)
+        widget.workers.setValue(1)
+        widget.save_settings()
+        self.assertFalse(cfg.as_bool(cfg.prefs['show_warning']))
+        self.assertTrue(cfg.as_bool(cfg.prefs['show_usage']))
+        self.assertTrue(cfg.as_bool(cfg.prefs['show_advisory']))
+        self.assertFalse(cfg.as_bool(cfg.prefs['autoupdate']))
+        self.assertEqual(cfg.prefs['workers'], 1)
+
+    def test_a_few_kilobytes_is_not_shown_as_zero_megabytes(self):
+        """Which is what it said, right above a button offering to delete it.
+
+        Real saved scans are kilobytes — 20 KB for a 474-book library — and
+        `0.0 MB` reads as *nothing is stored*. The megabyte unit came from the
+        18 000-book estimate, where it is right.
+        """
+        import calibre_plugins.epubveri_library.store as store
+        widget = self._widget()
+        saved = store.stored_size
+        try:
+            store.stored_size = lambda: (2, 7 * 1024)
+            widget._show_saved_size()
+            self.assertIn('7 KB', widget.saved_note.text())
+            store.stored_size = lambda: (2, 3 * 1024 * 1024)
+            widget._show_saved_size()
+            self.assertIn('3.0 MB', widget.saved_note.text())
+        finally:
+            store.stored_size = saved
+
+    def test_it_opens_on_what_is_already_saved(self):
+        cfg.prefs['show_usage'] = True
+        cfg.prefs['show_warning'] = False
+        widget = self._widget()
+        self.assertTrue(widget.show_usage.isChecked())
+        self.assertFalse(widget.show_warning.isChecked())
 
 
 class EnvelopeTests(unittest.TestCase):

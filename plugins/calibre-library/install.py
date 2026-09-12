@@ -56,6 +56,11 @@ CHECK_TIMEOUT = 5
 
 RECORD_NAME = 'install.json'
 
+#: The folder name `data_dir()` builds. Named here so that `store`, which must
+#: be able to *ask where* without *making it*, has one place to read it from
+#: rather than a second copy of the string.
+DATA_DIR_NAME = 'epubveri-library-data'
+
 
 class InstallPathError(Exception):
     """The folder the validator lives in cannot be created, because a name is
@@ -83,8 +88,17 @@ def since(value):
     return _now() - when
 
 
-def data_dir():
+def data_dir(create=True):
     """Where the epubveri binary lives. **Not the plugin's own folder.**
+
+    `create=False` returns the same path without making anything, for callers
+    that are only *asking* — `store.exists`, which the menu runs every time it
+    opens, and which should not leave a folder behind for a question. It is a
+    flag rather than a second function because the path is a fact with one
+    owner, and the moment there are two ways to spell it they can disagree.
+    (Tried the other way first: a `_data_dir_name()` beside this one, which
+    immediately did disagree — the tests point `data_dir` at a temporary
+    folder, and the copy went on reading the real config directory.)
 
     calibre never unpacks a plugin: it imports straight out of the zip, so
     `os.path.dirname(__file__)` is `.../plugins/epubveri_library.zip` — a file,
@@ -96,8 +110,8 @@ def data_dir():
     plugin writes its own copy of the binary to a **file** of exactly that
     name, and the collision breaks both tools in both directions.
     """
-    path = os.path.join(config_dir, 'plugins', 'epubveri-library-data')
-    if os.path.isdir(path):
+    path = os.path.join(config_dir, 'plugins', DATA_DIR_NAME)
+    if os.path.isdir(path) or not create:
         return path
     if os.path.exists(path) or os.path.islink(path):
         # `os.path.isdir` is False both for a plain file and for a symlink

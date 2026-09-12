@@ -44,12 +44,60 @@ books** marks them and filters the library view to them; double-clicking a book
 there opens it in Edit Book, where the editor plugin shows the findings in
 place.
 
+**The report window stays open while you do that**, so a row is a question you
+can ask again — and again of the next row — rather than one that costs the
+scan. If you close it anyway, **Show the last report** in the toolbar menu
+brings it back without re-reading a book. It does not survive calibre
+restarting.
+
+**Export…** writes either of two CSVs: the report you are looking at, one row
+per defect, or one row per book and defect — book id, title, message, severity
+and how many times that book trips it. Both follow the filter the window is
+showing.
+
+**Every report says what it is a report of**: the date and time, how long the
+scan took and how many books at once, the epubveri version, this plugin's, your
+calibre, your operating system and your core count. They are on a line under
+the summary, at the top of both CSVs, and on the clipboard under **Copy → What
+this scan was**.
+
+**The last two whole-library scans are kept on disk**, so the report survives
+calibre restarting and the two can be compared. A scan of *selected* books is
+shown like any other but is not kept as a baseline — measuring three thousand
+books against five would read as a library that had almost entirely repaired
+itself. They are filed under
+calibre's own id for the library, so a report can never be shown against
+another library's books. They include the titles of the books each defect was
+found in; Preferences → Plugins → Customize says how much is stored and can
+delete it. A 474-book library takes about 20 KB compressed, an 18 000-book one
+under a megabyte.
+
+That is not decoration. A report describes a library *as it was on a date* —
+books get added, repaired and removed afterwards, and the date and the book
+count are what let you judge how far a saved report has drifted. Comparing two
+of them needs the epubveri version for the same reason: the difference can be
+your books or it can be our release notes. It also means a scan time you post
+somewhere is one other people can actually compare against.
+
 ## Using it
 
 * **Validate library** in the toolbar opens a menu: **the whole library** or
-  **the selected books**. The button never starts a scan by itself — nothing
-  on it would say whether it was about to check three books or three thousand,
-  and being wrong about that costs ten minutes.
+  **the selected books**. Either half of the button opens it; neither starts a
+  scan on its own — nothing on the button would say whether it was about to
+  check three books or three thousand, and being wrong about that costs ten
+  minutes.
+* **Compare with the previous scan** subtracts this library's last two scans:
+  one row per rule, books before, books after, and the change. Rules that did
+  not move are hidden until you ask for them. It is the question a single
+  report cannot answer — *is my library better than it was* — and if the two
+  scans were run by different versions of epubveri the window says so, because
+  a rule we changed looks exactly like a book that was repaired.
+* The same menu holds **Show the last report**, **Show books with no EPUB** —
+  the ones a scan counted but could not look at, usually a conversion that
+  never happened — and **Clear the marks it left**, which removes only this
+  plugin's own marks and leaves anybody else's alone. Each is greyed out when
+  there is nothing for it to do, and each can be given a keyboard shortcut
+  under Preferences → Advanced → Shortcuts.
 * The scan runs as a background job. calibre stays usable, the Jobs panel shows
   progress, and **cancelling still shows what it found** — a scan of three
   thousand books takes about ten minutes and is not thrown away by a change of
