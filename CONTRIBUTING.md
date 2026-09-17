@@ -100,6 +100,34 @@ python3 plugins/sigil/build.py        # -> dist/sigil/epubveri_vX.Y.Z.zip
 their checksums, so that the file on a forum thread can be checked against the
 source it came from.
 
+## Putting a calibre release on MobileRead
+
+**The forum attachment is the distribution channel, not a mirror of it.**
+calibre's plugin index scrapes one index post for thread links, takes **the
+first `.zip` attachment** on each thread page, and reads the version out of
+the plugin class in `__init__.py` with an AST parse. So the archive's filename
+never reaches a user (calibre stores it as `<thread_id>.zip`), the version
+users see is `PLUGIN_VERSION_TUPLE`, and replacing the attachment is what
+triggers an update — it is compared by `Last-Modified`.
+
+```
+python3 plugins/calibre/forum.py          # -> dist/calibre/forum/
+python3 plugins/calibre-library/forum.py  # -> dist/calibre-library/forum/
+```
+
+Each stages the **published release asset** — downloaded, checked against the
+release's own `SHA256SUMS.txt`, checked for the two files calibre needs at the
+root of the archive, and checked that the version inside matches this tree.
+The staging folder is wiped first so it holds exactly one zip, because the
+index takes the first one it finds and the index post's instructions say not
+to attach more than one.
+
+Then, by hand: **delete the zip already on the first post**, attach the two
+staged files, and confirm the post shows one zip. A leftover older zip wins
+forever.
+
+Sigil has no equivalent: its index is a list of links, not attachments.
+
 ## Reporting a problem
 
 An issue about the plugin — it crashed, it put the cursor in the wrong place,

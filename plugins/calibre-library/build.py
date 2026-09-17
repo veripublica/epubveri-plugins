@@ -38,6 +38,12 @@ DIST = os.path.join(ROOT, "dist", "calibre-library")
 VERSION_RE = re.compile(r"PLUGIN_VERSION_TUPLE\s*=\s*\(([^)]*)\)")
 
 EXCLUDE = shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "build.py",
+                                 # `forum.py` is a packaging tool like this
+                                 # one, and it landed inside a built archive
+                                 # the first time it ran, because only
+                                 # `build.py` was named here. Caught before
+                                 # the zip was attached anywhere.
+                                 "forum.py",
                                  "epubveri", "epubveri.exe", ".DS_Store")
 
 
