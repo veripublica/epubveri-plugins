@@ -98,6 +98,24 @@ somewhere is one other people can actually compare against.
   plugin's own marks and leaves anybody else's alone. Each is greyed out when
   there is nothing for it to do, and each can be given a keyboard shortcut
   under Preferences → Advanced → Shortcuts.
+* **Show the books with no errors** is the other side of the report: after a
+  scan it marks the books that came back clean and filters the library to
+  them.
+
+  It is **no errors** rather than no findings, and the difference decides what
+  you see. epubveri reports the features EPUB 3.4 marks as outdated, so most
+  perfectly valid books carry a usage note for an NCX or an OPF 2 guide; a
+  list defined as "nothing was reported at all" would come back nearly empty
+  and look broken. A book with a warning is in this list and its warning is
+  still in the report. Books with no EPUB, and books that could not be read,
+  are not in it — they were never checked, so "no errors" would be a claim
+  nobody made.
+* **Stop the running check** stops a scan from the plugin's own menu rather
+  than only from the Jobs panel. Several books are checked at once, so
+  stopping waits for the ones already in flight instead of cutting off
+  mid-book, and what was found up to that point is still reported.
+* **Settings** opens the same page as Preferences → Plugins → Customize, one
+  click from the toolbar instead.
 * The scan runs as a background job. calibre stays usable, the Jobs panel shows
   progress, and **cancelling still shows what it found** — a scan of three
   thousand books takes about ten minutes and is not thrown away by a change of
