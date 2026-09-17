@@ -1,6 +1,6 @@
 # Changelog — epubveri library for calibre
 
-## [0.5.0] — unreleased
+## [0.5.0] — 2026-09-17
 
 Three menu entries, all of them things someone asked for in the thread and
 none of them reachable before.
