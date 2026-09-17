@@ -68,7 +68,7 @@ verdict, and — when there are any — how many usage notes and advisory findin
 are in the list above it, neither of which decides the verdict.
 
 ```
-epubveri 0.13.3 (plugin 0.2.0) — NOT VALID (2 error(s), 0 warning(s));
+epubveri 0.15.0 (plugin 0.3.3) — NOT VALID (2 error(s), 0 warning(s));
 also listed: 1 usage note(s), 1 advisory finding(s) epubcheck does not make
              — neither affects the verdict
 ```

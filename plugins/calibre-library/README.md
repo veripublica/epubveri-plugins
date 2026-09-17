@@ -10,7 +10,9 @@ answers **which** books have a problem, that one answers **what** the problem
 is. They are one product on two surfaces, not two products: same binary, same
 findings, same message ids.
 
-> **Status: 0.1.0.** It has run on calibre 9.14 on macOS and nowhere else.
+> **Status: 0.5.0.** It is developed and tested on calibre 9.14 on macOS. It
+> has been run by users elsewhere — including a Windows library of about
+> 18,000 books — but no other platform is tested here.
 > `minimum_calibre_version` is 6.0 because that is the oldest release it can
 > *load* on (`qt.core` arrived with calibre 6); it is not a claim about testing.
 

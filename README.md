@@ -11,9 +11,9 @@ library are the host's; the verdict is epubveri's.
 
 | plugin | for | status |
 |---|---|---|
-| [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | **released — [0.3.1](https://github.com/veripublica/epubveri-plugins/releases/tag/sigil-v0.3.1)** |
-| [`plugins/calibre`](plugins/calibre) | [calibre](https://calibre-ebook.com/)'s Edit Book | **released — [0.4.3](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-v0.4.3)** |
-| [`plugins/calibre-library`](plugins/calibre-library) | calibre's **library** view | **released — [0.1.1](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-library-v0.1.1)** |
+| [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | **released — [0.3.3](https://github.com/veripublica/epubveri-plugins/releases/tag/sigil-v0.3.3)** |
+| [`plugins/calibre`](plugins/calibre) | [calibre](https://calibre-ebook.com/)'s Edit Book | **released — [0.4.4](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-v0.4.4)** |
+| [`plugins/calibre-library`](plugins/calibre-library) | calibre's **library** view | **released — [0.5.0](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-library-v0.5.0)** |
 
 **The two calibre plugins are two archives, and calibre leaves no choice about
 that**: its loader collects the plugin classes in an archive and keeps exactly
@@ -41,8 +41,8 @@ Each plugin's README has the steps — they differ, and neither editor forgives
 getting it wrong: [Sigil](plugins/sigil/README.md) unpacks the zip and takes
 the plugin's folder name from the filename, so **do not rename it**;
 [calibre](plugins/calibre/README.md) imports straight out of the zip and never
-unpacks it. Releases are tagged per plugin (`sigil-v0.3.1`,
-`calibre-v0.4.3`, `calibre-library-v0.1.1`), because each is versioned independently — the tag says
+unpacks it. Releases are tagged per plugin (`sigil-v0.3.3`,
+`calibre-v0.4.4`, `calibre-library-v0.5.0`), because each is versioned independently — the tag says
 which editor a release is for, and **GitHub's "Latest" badge only means newest
 by date**, not newest for your editor.
 
@@ -59,7 +59,7 @@ epubveri's own releases and **verifies it against that release's
 plugins/          the products — one folder per editor
   sigil/            README, CHANGELOG, its own client/, tests, build.py
   calibre/          the same shape, independently versioned
-  calibre-library/  calibre's library view; shares only the binary with the above
+  calibre-library/  calibre's library view; shares nothing with the above
 LICENSE           GPL-3.0-only, for everything here
 ```
 

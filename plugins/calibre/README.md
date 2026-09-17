@@ -5,9 +5,12 @@ specification with [epubveri](https://github.com/veripublica/epubveri) — no
 Java, sub-second, and reporting epubcheck's own message IDs so the output is
 recognisable. **It reads your book and reports; it changes nothing.**
 
-> **Released as [0.1.0](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-v0.1.0),
-> and it has run on calibre 9.14 on macOS and nowhere else.** Nothing has been
-> tried on Windows or Linux, and no other calibre release has loaded it. The
+> **Released through [0.4.4](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-v0.4.4),
+> and the only platform it is developed and tested on is calibre 9.14 on
+> macOS.** Users have run it elsewhere — one release exists because of a theme
+> bug reported from another desktop — but no other platform or calibre release
+> is tested here, so treat a problem on one as worth reporting rather than
+> unexpected. The
 > declared `minimum_calibre_version` is 6.0 because that is when `qt.core` —
 > which this plugin imports — replaced `PyQt5.Qt`: it is the oldest release the
 > plugin *can* load on, not the oldest it has been run on.
