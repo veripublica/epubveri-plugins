@@ -1,6 +1,6 @@
 # Changelog — epubveri library for calibre
 
-## [Unreleased]
+## [0.5.1] — 2026-09-17
 
 - **The toolbar button is labelled "epubveri library" again — the plugin's own
   name.** It said "Validate library" for ten days, and the reasoning for that
