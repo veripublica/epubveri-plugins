@@ -161,9 +161,30 @@ class EpubveriLibraryAction(InterfaceAction):
             self.menu, 'epubveri_library_compare',
             'Compare with the previous scan',
             shortcut=None, triggered=self.compare_with_previous)
+        self.clean_action = self.create_menu_action(
+            self.menu, 'epubveri_library_clean', 'Show the books with no errors',
+            shortcut=None, triggered=self.show_clean_books)
         self.clear_action = self.create_menu_action(
             self.menu, 'epubveri_library_clear', 'Clear the marks it left',
             shortcut=None, triggered=self.clear_marks)
+        self.menu.addSeparator()
+        # **Stopping used to be findable only in the Jobs panel, and only if
+        # you were told.** The hint at the start of a scan is shown for runs
+        # over 500 books, so someone checking 300 saw nothing at all
+        # (JSWolf, MobileRead 375207 #18). This does what the Jobs panel's own
+        # stop button does, which is why it goes through the job manager
+        # rather than the job: `ThreadedJob.kill` only rewrites the timing
+        # fields, while `JobManager.kill_job` routes a queued job and a
+        # running one differently. Both read off calibre 9.14 itself.
+        self.stop_action = self.create_menu_action(
+            self.menu, 'epubveri_library_stop', 'Stop the running check',
+            shortcut=None, triggered=self.stop_scan)
+        # The editor plugin reaches its settings from the toolbar arrow, one
+        # click from the book; this one could be reached only through
+        # Preferences / Plugins / Customize (JSWolf, 375207 #16 and #18).
+        self.settings_action = self.create_menu_action(
+            self.menu, 'epubveri_library_settings', 'Settings',
+            shortcut=None, triggered=self.show_settings)
         # Greyed out rather than hidden when there is nothing to show: a menu
         # whose items appear and disappear teaches nobody what the plugin can
         # do, and a disabled entry says the report is gone, which is true.
@@ -228,20 +249,70 @@ class EpubveriLibraryAction(InterfaceAction):
         self.compare_action.setEnabled(
             has_saved and store.exists(library_id, store.PREVIOUS))
         self.clear_action.setEnabled(bool(self._marked_ids()))
+        self.clean_action.setEnabled(bool(report and self._clean_ids(report)))
+        self.stop_action.setEnabled(self._scan_running())
 
-    def _scan_running(self):
-        """Is one of ours already going?
+    def _our_jobs(self):
+        """Our unfinished scans, newest last.
 
         `JobManager` has no per-type count — `unfinished_jobs()` is the whole
         public surface for this — so the type is matched here. Checked rather
         than assumed: an earlier version of this file called a
         `get_group_count` that does not exist in calibre 9.14.
+
+        Returns the jobs rather than a count because two callers want
+        different things from the same question: the menu wants to know
+        whether to grey an entry, and `stop_scan` wants the job itself.
         """
         try:
             jobs = self.gui.job_manager.unfinished_jobs()
         except Exception:                               # noqa: BLE001
-            return False
-        return any(getattr(job, 'type', None) == JOB_TYPE for job in jobs)
+            return []
+        return [job for job in jobs if getattr(job, 'type', None) == JOB_TYPE]
+
+    def _scan_running(self):
+        """Is one of ours already going?"""
+        return bool(self._our_jobs())
+
+    def stop_scan(self):
+        """Stop the scan the way the Jobs panel's own button does.
+
+        **Through the manager, not the job.** `ThreadedJob.kill` only rewrites
+        `start_time`/`duration`; `JobManager.kill_job(job, view)` is what
+        routes a queued job (dropped from the queue) and a running one (the
+        abort event the worker checks between books) to the right place, and
+        it is what the Jobs panel calls. `view` is a dialog parent there, so
+        the main window serves.
+
+        A scan that has already finished between the menu opening and this
+        click is not an error — there is simply nothing to stop, and saying so
+        is friendlier than an empty click.
+        """
+        jobs = self._our_jobs()
+        if not jobs:
+            return self.gui.status_bar.show_message(
+                'epubveri: no check is running', 5000)
+        for job in jobs:
+            self.gui.job_manager.kill_job(job, self.gui)
+
+    def show_settings(self):
+        """Open this plugin's own settings page.
+
+        `find_plugin` by name rather than an attribute on the action:
+        `interface_action_base_plugin` is not on `InterfaceAction` in calibre
+        9.14 (checked), and `do_user_config` belongs to the *base* plugin —
+        the object in calibre's registry, which is what `find_plugin`
+        returns. The name is our own constant, so the two cannot drift.
+        """
+        from calibre.customize.ui import find_plugin
+        plugin = find_plugin(PLUGIN_NAME)
+        if plugin is None:                              # pragma: no cover
+            return error_dialog(
+                self.gui, 'epubveri',
+                'The settings page could not be opened. Preferences / '
+                'Plugins / epubveri library / Customize reaches the same '
+                'page.', show=True)
+        plugin.do_user_config(self.gui)
 
     # -- starting ------------------------------------------------------------
 
@@ -490,6 +561,44 @@ class EpubveriLibraryAction(InterfaceAction):
         if not report or not report.no_format:
             return
         self.show_books({r.book_id for r in report.no_format}, 'no EPUB')
+
+    @staticmethod
+    def _clean_ids(report):
+        """The books a scan looked at and found no error in.
+
+        **"No error", not "no finding" — and the difference is the whole
+        usefulness of the entry.** epubveri 0.15.0 reports the features EPUB
+        3.4 marks as outdated, so a large majority of real books now carry a
+        usage note for an NCX or an OPF 2 guide while being perfectly valid.
+        Defined as "nothing at all was reported" this list would come back
+        nearly empty and read as broken.
+
+        The verdict is the line epubveri itself draws: error and fatal decide
+        it, warnings and below do not. A book with a warning is in here, and
+        its warning is still in the report.
+
+        Books with no EPUB and books that could not be read are not in it
+        either — they were not checked, so "no errors" would be a claim
+        nobody made. `show_books_without_epub` is where the first group
+        belongs.
+
+        Requested by maddz on MobileRead (375207 #23).
+        """
+        return {b.book_id for b in report.books
+                if b.status == 'ok'
+                and not b.counts.get('error')
+                and not b.counts.get('fatal')}
+
+    def show_clean_books(self):
+        """Mark the books that came back without an error and show them."""
+        report = self.last_report
+        if not report:
+            return
+        ids = self._clean_ids(report)
+        if not ids:
+            return self.gui.status_bar.show_message(
+                'epubveri: every checked book has at least one error', 5000)
+        self.show_books(ids, 'no errors')
 
     def _marked_ids(self):
         """The books *we* marked, by the text we mark with.

@@ -1,5 +1,42 @@
 # Changelog — epubveri library for calibre
 
+## [0.5.0] — unreleased
+
+Three menu entries, all of them things someone asked for in the thread and
+none of them reachable before.
+
+- **Stop the running check.** Cancelling was possible from the moment the
+  scan became a calibre job, and findable only in the Jobs panel — which the
+  plugin mentions at the start of a scan, and only for runs over 500 books.
+  Someone checking three hundred saw nothing at all (JSWolf, MobileRead
+  375207 #18). The entry is greyed out when nothing is running.
+
+  It goes through `JobManager.kill_job`, which is what the Jobs panel's own
+  button calls: `ThreadedJob.kill` only rewrites the job's timing fields, so
+  a stop built on it would look right and leave the scan running. A test
+  pins the distinction, because nothing else would catch it.
+
+- **Settings.** The editor plugin reaches its settings from the toolbar
+  arrow, one click from the book; this one could only be reached through
+  Preferences / Plugins / Customize (JSWolf, 375207 #16 and #18). Same page,
+  one place fewer to look.
+
+- **Show the books with no errors.** Requested by maddz (375207 #23): after a
+  scan, the books that came back clean are as interesting as the ones that
+  did not, and the report only ever showed the problems.
+
+  **"No errors" rather than "no findings", and that is a decision rather than
+  a shortcut.** epubveri 0.15.0 reports the features EPUB 3.4 marks as
+  outdated, so most valid books now carry a usage note for an NCX or an OPF 2
+  guide. A list defined as "nothing was reported at all" would come back
+  nearly empty and read as broken. Error and fatal are the line epubveri
+  itself draws between a book that passes and one that does not; a book with
+  a warning is in this list, and its warning is still in the report.
+
+  Books with no EPUB and books that could not be read are not in it either.
+  They were never checked, so "no errors" would be a claim nobody made —
+  *Show books with no EPUB* is where the first group belongs.
+
 ## [0.4.0] — 2026-09-12
 
 - **A scan is kept, so the report survives calibre closing.** *Show the last

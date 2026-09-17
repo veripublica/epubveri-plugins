@@ -1161,9 +1161,99 @@ class ActionTests(unittest.TestCase):
         wired = {node.attr for node in ast.walk(genesis)
                  if isinstance(node, ast.Attribute)}
         for name in ('show_last_report', 'show_books_without_epub',
-                     'clear_marks'):
+                     'clear_marks', 'show_clean_books', 'stop_scan',
+                     'show_settings'):
             self.assertIn(name, wired,
                           '%s is defined and nothing can reach it' % name)
+
+    def test_a_book_with_only_a_usage_note_counts_as_clean(self):
+        """maddz's request (375207 #23), and the reason it is "no errors".
+
+        epubveri 0.15.0 reports outdated features as usage notes, so most
+        valid books now carry one. Defined as "nothing was reported at all"
+        this list would be nearly empty on a real library and would read as a
+        broken feature; the verdict — error and fatal — is the line epubveri
+        itself draws.
+
+        The four books here are the whole decision: a clean one, one with a
+        usage note only, one with a warning only, and one with an error.
+        """
+        import calibre_plugins.epubveri_library.action as action
+
+        def book(book_id, status='ok', **counts):
+            return type('B', (), {'book_id': book_id, 'status': status,
+                                  'counts': counts})()
+
+        report = type('R', (), {'books': [
+            book(1),
+            book(2, usage=13),
+            book(3, warning=2, info=1),
+            book(4, error=1),
+            book(5, fatal=1),
+            book(6, status='no format'),
+            book(7, status='failed'),
+        ]})()
+        self.assertEqual(
+            action.EpubveriLibraryAction._clean_ids(report), {1, 2, 3},
+            'a usage note or a warning is not an error; a book nobody could '
+            'check is not "no errors" either')
+
+    def test_stopping_goes_through_the_manager_not_the_job(self):
+        """`ThreadedJob.kill` only rewrites the timing fields.
+
+        `JobManager.kill_job(job, view)` is what routes a queued job and a
+        running one differently, and it is what the Jobs panel's own button
+        calls — read off calibre 9.14. A stop that called `job.kill()` would
+        look right, leave the scan running, and be discovered by a user.
+        """
+        import calibre_plugins.epubveri_library.action as action
+
+        killed = []
+
+        class Job(object):
+            type = action.JOB_TYPE
+
+            def kill(self):                              # pragma: no cover
+                raise AssertionError('went to the job, not the manager')
+
+        job = Job()
+
+        class Manager(object):
+            @staticmethod
+            def unfinished_jobs():
+                return [job, type('Other', (), {'type': 'something else'})()]
+
+            @staticmethod
+            def kill_job(j, view):
+                killed.append((j, view))
+
+        gui = type('G', (), {'job_manager': Manager(),
+                             'status_bar': type('S', (), {
+                                 'show_message': staticmethod(
+                                     lambda *a, **k: None)})()})()
+        stub = type('Stub', (), {
+            'gui': gui,
+            '_our_jobs': action.EpubveriLibraryAction._our_jobs})()
+        action.EpubveriLibraryAction.stop_scan(stub)
+        self.assertEqual(len(killed), 1, 'only our own job is stopped')
+        self.assertIs(killed[0][0], job)
+
+    def test_stopping_nothing_says_so_rather_than_failing(self):
+        """The scan can finish between the menu opening and the click."""
+        import calibre_plugins.epubveri_library.action as action
+
+        said = []
+        gui = type('G', (), {
+            'job_manager': type('M', (), {
+                'unfinished_jobs': staticmethod(lambda: [])})(),
+            'status_bar': type('S', (), {
+                'show_message': staticmethod(
+                    lambda text, *a: said.append(text))})()})()
+        stub = type('Stub', (), {
+            'gui': gui,
+            '_our_jobs': action.EpubveriLibraryAction._our_jobs})()
+        action.EpubveriLibraryAction.stop_scan(stub)
+        self.assertTrue(said and 'no check is running' in said[0])
 
     def test_clear_marks_can_find_the_marks_it_left(self):
         """`_marked_ids` did not exist while `clear_marks` was calling it.
