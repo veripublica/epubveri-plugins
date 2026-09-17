@@ -81,13 +81,33 @@ class EpubveriLibraryAction(InterfaceAction):
     #: registers it with no default binding, which is what we want — a
     #: ten-minute scan does not deserve a key combination of our choosing, but
     #: someone who runs it daily should be able to pick one.
-    #: **A verb phrase, not the brand.** calibre's toolbar row is all verbs —
-    #: Add books, Edit metadata, Convert books, Remove books, Tweak ePub — and
-    #: a bare "epubveri" sat wrong among them *and* read as the same thing as
-    #: the editor plugin, whose button says "Validate with epubveri". Same
-    #: verb, different object; the brand is carried by the icon and by the
-    #: tooltip, which is where a user goes when the label is not enough.
-    action_spec = ('Validate library', None,
+    #: **The plugin's name, because that is what someone is looking for.**
+    #:
+    #: This was "Validate library" for ten days, on the argument that calibre's
+    #: toolbar row is all verbs — Add books, Edit metadata, Convert books,
+    #: Remove books, Tweak ePub — so a brand name sat wrong among them. The
+    #: observation is true and the conclusion did not follow: **it benchmarked
+    #: against calibre's own actions, and this is not one.** Nobody hunts for a
+    #: plugin by its verb. They look for the name they installed, which is what
+    #: Preferences / Plugins shows, what the plugin index lists, and what the
+    #: forum thread is called.
+    #:
+    #: Corrected on the first field report rather than on taste: Comfy.n, a
+    #: moderator of MobileRead's Plugins forum and therefore someone with a
+    #: great many of them installed, could not find the button — *"I was
+    #: puzzling over why I couldn't see epubveri (library)"*. That is the
+    #: population the old reasoning was blind to, and the editor plugin never
+    #: had the problem because its label carries the brand already.
+    #:
+    #: The old objection does not survive the fix either: "epubveri library"
+    #: and "Validate with epubveri" cannot be read as the same thing.
+    #:
+    #: **This changes the caption, not `name`.** `name` is calibre's identity
+    #: key and moving it would orphan `gprefs['action-layout-*']`; see the note
+    #: on `name` above. A caption has no such reach.
+    #: `PLUGIN_NAME` rather than a copy of it, so the caption cannot be left
+    #: behind by a rename — the whole point is that the two agree.
+    action_spec = (PLUGIN_NAME, None,
                    'Validate this library with epubveri', ())
 
     #: **Where calibre may offer to put this, and three of these are

@@ -1,5 +1,32 @@
 # Changelog — epubveri library for calibre
 
+## [Unreleased]
+
+- **The toolbar button is labelled "epubveri library" again — the plugin's own
+  name.** It said "Validate library" for ten days, and the reasoning for that
+  is in `8f52f65`: calibre's toolbar row is all verbs, so a brand name sat
+  wrong among them. The observation was right and the conclusion did not
+  follow. **It benchmarked against calibre's own actions, and this is not one.**
+  Nobody hunts for a plugin by its verb; they look for the name they installed,
+  which is what Preferences / Plugins shows, what the plugin index lists, and
+  what the forum thread is called.
+
+  The correction came from the first person outside this project to say
+  anything about it — Comfy.n, a moderator of MobileRead's Plugins forum and
+  so someone with a great many installed: *"I was puzzling over why I couldn't
+  see epubveri (library) button."* That is exactly the population the old
+  argument could not see, and the editor plugin never had the problem because
+  its label carries the brand already.
+
+  The old objection does not survive the fix: "epubveri library" and "Validate
+  with epubveri" cannot be read as the same thing. The verb moved to the
+  tooltip, which has room for it.
+
+  **The caption moved, `name` did not** — `name` is calibre's identity key and
+  changing it would orphan `gprefs['action-layout-*']`, so an installed copy
+  keeps its toolbar placement. The caption is now `PLUGIN_NAME` itself rather
+  than a copy, so the two cannot drift apart again.
+
 ## [0.5.0] — 2026-09-17
 
 Three menu entries, all of them things someone asked for in the thread and

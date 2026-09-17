@@ -4,7 +4,7 @@ Validate a **whole calibre library** with [epubveri](https://github.com/veripubl
 a fast, JVM-free EPUB validator, and see which defects recur across it.
 
 This is the *library* plugin — it appears in calibre's main window as
-**Validate library**. There is a separate **editor** plugin in this repository
+**epubveri library**, the same name it has in Preferences / Plugins. There is a separate **editor** plugin in this repository
 for Edit Book (**Validate with epubveri**), and the two work together: this one
 answers **which** books have a problem, that one answers **what** the problem
 is. They are one product on two surfaces, not two products: same binary, same
@@ -83,7 +83,7 @@ somewhere is one other people can actually compare against.
 
 ## Using it
 
-* **Validate library** in the toolbar opens a menu: **the whole library** or
+* **epubveri library** in the toolbar opens a menu: **the whole library** or
   **the selected books**. Either half of the button opens it; neither starts a
   scan on its own — nothing on the button would say whether it was about to
   check three books or three thousand, and being wrong about that costs ten

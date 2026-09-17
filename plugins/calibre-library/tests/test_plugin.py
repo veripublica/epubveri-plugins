@@ -1394,20 +1394,30 @@ class ActionTests(unittest.TestCase):
         callback = action.EpubveriLibraryAction.dispatched_finish(stub)
         self.assertIsInstance(callback, Dispatcher)
 
-    def test_the_button_says_what_it_does_not_who_made_it(self):
-        """The label was a bare "epubveri" and that was the whole complaint.
+    def test_the_button_is_labelled_with_the_plugin_name(self):
+        """The caption must be findable, which means it must be the name.
 
-        calibre's toolbar row is verbs — Add books, Edit metadata, Convert
-        books, Remove books, Tweak ePub — and the editor plugin's button says
-        "Validate with epubveri". A bare brand name sat wrong among the first
-        and was indistinguishable from the second.
+        This test asserted the opposite for ten days — that the label is
+        "Validate library" and explicitly *not* the brand — on the argument
+        that calibre's toolbar row is verbs. That benchmarked against
+        calibre's own actions; a plugin is looked for by the name it was
+        installed under, which is what Preferences / Plugins shows.
+
+        Reversed on a field report from a moderator of MobileRead's Plugins
+        forum, who could not find the button among his own many plugins. The
+        test is kept rather than deleted because the label is still exactly
+        the kind of thing that regresses without a sound — only what it pins
+        has changed.
         """
         import calibre_plugins.epubveri_library.action as action
+        from calibre_plugins.epubveri_library import PLUGIN_NAME
         label = action.EpubveriLibraryAction.action_spec[0]
-        self.assertEqual(label, 'Validate library')
-        self.assertNotEqual(label.lower(), 'epubveri')
-        # The brand still has somewhere to live: the tooltip.
-        self.assertIn('epubveri', action.EpubveriLibraryAction.action_spec[2])
+        self.assertEqual(label, PLUGIN_NAME)
+        # Not a copy of the name: the same string, so a rename cannot leave
+        # the caption behind.
+        self.assertEqual(label, 'epubveri library')
+        # The verb did not go anywhere; it moved to where there is room for it.
+        self.assertIn('Validate', action.EpubveriLibraryAction.action_spec[2])
 
     def test_the_plugin_name_cannot_collide_with_the_editor_plugin(self):
         """`name` is calibre's identity key, not a caption.
