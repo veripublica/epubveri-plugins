@@ -62,10 +62,12 @@ NAV = ('<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1
        '</body></html>')
 # `fake` draws a message that QUOTES the attribute name (the shape that broke
 # Sigil's result XML), and `colour` draws an ADV-001 advisory - the two things
-# the display layer has to get right.
+# the display layer has to get right. The `<style>` carries no `type`: since
+# epubveri 0.15.0 `type="text/css"` there draws an RSC-036 usage note, which
+# broke this book's "exactly one usage note" design without anyone noticing.
 CH1 = ('<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml">'
        '<head><title>t</title>'
-       '<style type="text/css">p { colour: red }</style></head>'
+       '<style>p { colour: red }</style></head>'
        '<body><p fake="x">x</p></body></html>')
 CONTAINER = ('<?xml version="1.0"?>\n<container version="1.0" '
              'xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles>'
