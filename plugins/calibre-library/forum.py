@@ -206,6 +206,9 @@ if __name__ == "__main__":
         print("is correct; these are what the next release will carry:")
         for name in drift:
             print("  - %s" % name)
-    print("\nThis plugin is NOT in calibre's plugin index yet: PM an active")
-    print("calibre moderator to have thread %s listed." % THREAD)
+    # Listed since 2026-09-18 (Comfy.n), confirmed by the owner 2026-09-23.
+    # This line said "NOT in the index yet" for five days after that, which
+    # would have sent someone to ask a moderator for what was already done.
+    print("\nThis plugin IS in calibre's plugin index: every installed copy")
+    print("updates from this attachment. Nothing else to notify.")
     sys.exit(0)

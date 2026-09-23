@@ -38,7 +38,7 @@ of the plugin class in `__init__.py` with an AST parse. Three consequences:
   attachment is the whole of the operation.
 
 Its sibling, `plugins/calibre-library/forum.py`, does the same for the library
-plugin — which is not in the index yet.
+plugin, which has been in the index too since 2026-09-18.
 
 This script does not touch the forum. Attaching is manual and stays that way.
 """
