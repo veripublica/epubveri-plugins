@@ -161,6 +161,32 @@ def parse_version(text):
         return None
 
 
+
+def _safe_extract_tar(tf, dest):
+    """Extract `tf` into `dest`, refusing any member that would land outside it.
+
+    The archive's checksum was verified first, but against a `SHA256SUMS.txt`
+    from the same release, so a compromised release passes that check. A
+    plain `extractall` then lets a crafted tar write through `../`, an
+    absolute path or a link, into any file the user can write, before the
+    binary is ever run. Python's `data` filter refuses all three. It exists
+    from 3.12 and was backported to 3.8.17, 3.9.17, 3.10.12 and 3.11.4, and
+    the interpreters Sigil and calibre bundle are not all that new, so older
+    ones get the same refusals by hand. Our archives hold one regular file.
+    """
+    if hasattr(tarfile, "data_filter"):
+        tf.extractall(dest, filter="data")
+        return
+    root = os.path.realpath(dest)
+    for member in tf.getmembers():
+        target = os.path.realpath(os.path.join(dest, member.name))
+        if not (member.isfile() or member.isdir()) or (
+                target != root and not target.startswith(root + os.sep)):
+            raise DownloadError(
+                "refusing archive member %r: it is not a plain file inside "
+                "the extraction directory. Nothing was installed." % member.name)
+    tf.extractall(dest)
+
 def download_binary(destdir, expected=None, timeout=NETWORK_TIMEOUT):
     """Fetch the newest archive, verify it, extract the binary into `destdir`.
 
@@ -209,7 +235,7 @@ def download_binary(destdir, expected=None, timeout=NETWORK_TIMEOUT):
                 zf.extractall(extracted)
         else:
             with tarfile.open(archive) as tf:
-                tf.extractall(extracted)
+                _safe_extract_tar(tf, extracted)
 
         found = None
         for root, _dirs, files in os.walk(extracted):
