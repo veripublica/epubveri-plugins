@@ -1,5 +1,19 @@
 # Changelog — epubveri library for calibre
 
+## [0.5.2] — 2026-09-23
+
+- **The downloaded epubveri binary is unpacked safely.** The plugin fetches
+  epubveri from its GitHub release and checks the archive against that
+  release's `SHA256SUMS.txt`. Because both files come from the same release,
+  the check proves the download arrived intact. It does not prove that the
+  release itself is sound. If it were not, a plain `tarfile.extractall` would
+  have let a crafted archive write outside the plugin's folder through `../`,
+  an absolute path or a link, before the binary was ever run. The archive is
+  now unpacked with Python's `data` filter where the interpreter has it
+  (calibre's does), and older interpreters refuse the same three shapes by
+  hand. Found in epubveri's security review. No release was ever affected.
+  It is a hardening, and it changes nothing you will see.
+
 ## [0.5.1] — 2026-09-17
 
 - **The toolbar button is labelled "epubveri library" again — the plugin's own

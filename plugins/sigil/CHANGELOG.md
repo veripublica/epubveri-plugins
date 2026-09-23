@@ -3,6 +3,25 @@
 This plugin is versioned independently of the calibre plugin and of epubveri
 itself. The version Sigil shows comes from `plugin.xml`.
 
+## [0.3.4] — 2026-09-23
+
+- **The downloaded epubveri binary is unpacked safely.** The plugin fetches
+  epubveri from its GitHub release and checks the archive against that
+  release's `SHA256SUMS.txt`. Because both files come from the same release,
+  the check proves the download arrived intact. It does not prove that the
+  release itself is sound. If it were not, a plain `tarfile.extractall` would
+  have let a crafted archive write outside the plugin's folder through `../`,
+  an absolute path or a link, before the binary was ever run. The archive is
+  now unpacked with Python's `data` filter where the interpreter has it
+  (calibre's does), and older interpreters refuse the same three shapes by
+  hand. Found in epubveri's security review. No release was ever affected.
+  It is a hardening, and it changes nothing you will see.
+- The test book no longer carries a `type` attribute on its `<style>`. Since
+  epubveri 0.15.0 that attribute draws an RSC-036 usage note, which broke the
+  book's "exactly one usage note" design, and one test had failed against
+  every epubveri release since. The plugin itself was right throughout. That
+  test and the other two plugins' suites now gate epubveri's own releases.
+
 ## [0.3.3] — 2026-09-12
 
 - **The cursor lands on the character epubveri named, on three kinds of

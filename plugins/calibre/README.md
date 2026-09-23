@@ -5,7 +5,7 @@ specification with [epubveri](https://github.com/veripublica/epubveri) — no
 Java, sub-second, and reporting epubcheck's own message IDs so the output is
 recognisable. **It reads your book and reports; it changes nothing.**
 
-> **Released through [0.4.4](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-v0.4.4),
+> **Released through [0.4.5](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-v0.4.5),
 > and the only platform it is developed and tested on is calibre 9.14 on
 > macOS.** Users have run it elsewhere — one release exists because of a theme
 > bug reported from another desktop — but no other platform or calibre release

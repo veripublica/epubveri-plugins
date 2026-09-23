@@ -3,6 +3,20 @@
 Versioned independently of the Sigil plugin and of epubveri itself. The version
 calibre shows comes from `PLUGIN_VERSION_TUPLE` in `__init__.py`.
 
+## [0.4.5] — 2026-09-23
+
+- **The downloaded epubveri binary is unpacked safely.** The plugin fetches
+  epubveri from its GitHub release and checks the archive against that
+  release's `SHA256SUMS.txt`. Because both files come from the same release,
+  the check proves the download arrived intact. It does not prove that the
+  release itself is sound. If it were not, a plain `tarfile.extractall` would
+  have let a crafted archive write outside the plugin's folder through `../`,
+  an absolute path or a link, before the binary was ever run. The archive is
+  now unpacked with Python's `data` filter where the interpreter has it
+  (calibre's does), and older interpreters refuse the same three shapes by
+  hand. Found in epubveri's security review. No release was ever affected.
+  It is a hardening, and it changes nothing you will see.
+
 ## [0.4.4] — 2026-09-10
 
 - **The description now names the library plugin.** The two used to share one
