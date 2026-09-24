@@ -58,7 +58,7 @@ class RuleItem(QTreeWidgetItem):
         self.group = group
         self.setText(COL_CODE, group.code)
         self.setText(COL_WHAT, group.label)
-        self.setToolTip(COL_WHAT, group.example)
+        self.setToolTip(COL_WHAT, group.label)
         self.setText(COL_SEVERITY,
                      'ADVISORY' if group.is_advisory else group.severity.upper())
         self.setText(COL_BOOKS, str(group.books))
@@ -359,7 +359,8 @@ class ResultsDialog(QDialog):
             for group, count in per_book[book_id]:
                 yield (book_id, titles.get(book_id, ''), group.code,
                        group.rule or '', group.violation_kind or '',
-                       group.name or '', group.severity, count, group.example)
+                       group.name or '', group.severity, count,
+                       group.label_for(book_id))
 
     def _as_csv(self, rows=None):
         buffer = io.StringIO()
@@ -445,7 +446,7 @@ class ChangeItem(QTreeWidgetItem):
         group = change.group
         self.setText(CMP_CODE, group.code)
         self.setText(CMP_WHAT, group.label)
-        self.setToolTip(CMP_WHAT, group.example)
+        self.setToolTip(CMP_WHAT, group.label)
         self.setText(CMP_BEFORE, str(change.before_books))
         self.setText(CMP_AFTER, str(change.after_books))
         # **A sign on every number that has one.** `-169` and `+3` say which
@@ -643,7 +644,7 @@ class CompareDialog(QDialog):
             yield (group.code, group.rule or '', group.severity,
                    change.before_books, change.after_books,
                    change.books_delta, change.before_findings,
-                   change.after_findings, change.state, group.example)
+                   change.after_findings, change.state, group.label)
 
     def _preamble(self):
         """Both scans' conditions, each prefixed, then a blank row.

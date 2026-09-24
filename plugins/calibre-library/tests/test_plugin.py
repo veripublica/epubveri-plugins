@@ -270,6 +270,28 @@ class OrderingTests(unittest.TestCase):
         self.assertTrue(row.varies)
         self.assertTrue(row.label.startswith('e.g. '))
 
+    def test_each_book_keeps_its_own_message(self):
+        """MobileRead 375207 #52: one rule key, two sentences. DNSB's
+        cover.xhtml was exported as a stylesheet with a remote resource,
+        because the per-book export wrote the library's first sentence."""
+        rule = 'opf.content_document.property_used_undeclared'
+        stylesheet = 'stylesheet uses a remote resource'
+        svg = 'content document uses svg'
+        report = scan.ScanReport()
+        report.add(make_finding(kind=None, rule=rule, code='OPF-014',
+                                message=stylesheet), 1)
+        report.add(make_finding(kind=None, rule=rule, code='OPF-014',
+                                message=svg), 2)
+        report.add(make_finding(kind=None, rule=rule, code='OPF-014',
+                                message=svg), 3)
+        report.add(make_finding(kind=None, rule=rule, code='OPF-014',
+                                message=stylesheet), 3)
+        row = report.rows()[0]
+        self.assertEqual(row.label, 'e.g. ' + stylesheet)
+        self.assertEqual(row.label_for(1), stylesheet)
+        self.assertEqual(row.label_for(2), svg)
+        self.assertEqual(row.label_for(3), 'e.g. ' + svg)
+
     def test_a_row_whose_messages_agree_is_not_hedged(self):
         report = scan.ScanReport()
         report.add(make_finding(params=['img']), 1)
@@ -801,6 +823,22 @@ class DialogTests(PinnedPrefs, unittest.TestCase):
         self.assertEqual([(r[1], r[7]) for r in rows[1:]],
                          [('Loud', 40), ('Quiet', 1)])
 
+    def test_the_book_csv_says_each_books_own_sentence(self):
+        report = scan.ScanReport()
+        report.scanned = report.requested = 2
+        rule = 'opf.content_document.property_used_undeclared'
+        report.add(make_finding(kind=None, rule=rule, code='OPF-014',
+                                message='stylesheet uses a remote resource'), 1)
+        report.add(make_finding(kind=None, rule=rule, code='OPF-014',
+                                message='content document uses svg'), 2)
+        report.books = [scan.BookResult(1, 'Remote', 'a.epub'),
+                        scan.BookResult(2, 'Cover', 'b.epub')]
+        dialog = self._dialog(report)
+        rows = list(dialog._as_book_rows())
+        self.assertEqual([(r[1], r[8]) for r in rows[1:]],
+                         [('Remote', 'stylesheet uses a remote resource'),
+                          ('Cover', 'content document uses svg')])
+
     def test_the_book_csv_obeys_the_filter_the_window_shows(self):
         report = self._report()
         report.books = [scan.BookResult(book_id, 'B%d' % book_id, 'x.epub')
@@ -878,6 +916,30 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(
             after._as_csv(after._with_preamble(after._as_book_rows())),
             before._as_csv(before._with_preamble(before._as_book_rows())))
+
+    def test_per_book_messages_survive_the_round_trip(self):
+        rule = 'opf.content_document.property_used_undeclared'
+        report = scan.ScanReport()
+        report.add(make_finding(kind=None, rule=rule, message='one'), 1)
+        report.add(make_finding(kind=None, rule=rule, message='two'), 2)
+        report.add(make_finding(kind=None, rule=rule, message='one'), 2)
+        self.store.save('lib-1', report)
+        row = self.store.load('lib-1').rows()[0]
+        self.assertEqual(row.label_for(1), 'one')
+        self.assertEqual(row.label_for(2), 'e.g. two')
+
+    def test_a_scan_saved_before_per_book_messages_is_hedged(self):
+        """A file from 0.5.2 has no `book_examples`. Its per-book rows must
+        fall back to the row's hedged label, not to one book's sentence."""
+        rule = 'opf.content_document.property_used_undeclared'
+        report = scan.ScanReport()
+        report.add(make_finding(kind=None, rule=rule, message='one'), 1)
+        report.add(make_finding(kind=None, rule=rule, message='two'), 2)
+        data = self.store.to_dict(report)
+        for group in data['groups']:
+            del group['book_examples'], group['book_varies']
+        row = self.store.from_dict(data).rows()[0]
+        self.assertEqual(row.label_for(2), 'e.g. one')
 
     def test_book_ids_come_back_as_numbers(self):
         """JSON object keys are strings whatever they went in as, and a string

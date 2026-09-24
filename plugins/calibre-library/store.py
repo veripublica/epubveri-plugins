@@ -95,6 +95,13 @@ def _group_to_dict(group):
         # everywhere else in this plugin and a string one would mark nothing.
         'book_counts': {str(book_id): count
                         for book_id, count in group.book_counts.items()},
+        # Per book only where the row's messages differ: where they agree,
+        # every book's message is the example, and writing it seventeen
+        # thousand times would say nothing `example` does not.
+        'book_examples': ({str(book_id): message for book_id, message
+                           in group.book_examples.items()}
+                          if group.varies else {}),
+        'book_varies': sorted(group.book_varies),
     }
 
 
@@ -112,6 +119,12 @@ def _group_from_dict(data):
     group.findings = int(data.get('findings') or 0)
     group.book_counts = {int(book_id): int(count) for book_id, count
                          in (data.get('book_counts') or {}).items()}
+    # Absent from a scan saved before 0.5.3: `label_for` then falls back to
+    # the row's own, hedged label rather than to another book's sentence.
+    group.book_examples = {int(book_id): message for book_id, message
+                           in (data.get('book_examples') or {}).items()}
+    group.book_varies = {int(book_id)
+                         for book_id in (data.get('book_varies') or [])}
     return group
 
 

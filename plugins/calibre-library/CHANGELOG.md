@@ -1,5 +1,21 @@
 # Changelog — epubveri library for calibre
 
+## [Unreleased]
+
+- **Each book's row in the per-book export says that book's own message.**
+  A row is one rule, and one rule can carry more than one sentence:
+  `opf.content_document.property_used_undeclared` says "svg" of a content
+  document and "remote resource" of a stylesheet. The per-book export wrote
+  the first sentence the scan met, unhedged, against every book in the row.
+  So a book whose cover lacked the `svg` property was reported as a
+  stylesheet with a remote resource, while epubveri itself, in Sigil, named
+  it correctly (DNSB, MobileRead 375207 #52). The export now carries each
+  book's own first message, with `e.g.` when that book has several. The
+  comparison export and both tooltips use the row's hedged label, the one the
+  table already showed. A scan saved by 0.5.2 has no per-book messages, and
+  its rows fall back to that hedged label rather than to another book's
+  sentence.
+
 ## [0.5.2] — 2026-09-23
 
 - **The downloaded epubveri binary is unpacked safely.** The plugin fetches

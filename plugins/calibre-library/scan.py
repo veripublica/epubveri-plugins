@@ -63,7 +63,8 @@ class RuleGroup:
     """One row of the report: a single defect, across the whole library."""
 
     __slots__ = ('key', 'code', 'rule', 'violation_kind', 'name', 'severity',
-                 'example', 'varies', 'findings', 'book_counts')
+                 'example', 'varies', 'findings', 'book_counts',
+                 'book_examples', 'book_varies')
 
     def __init__(self, key, finding):
         self.key = key
@@ -92,12 +93,26 @@ class RuleGroup:
         #: DNSB asked for the second (MobileRead 375207 #13). Counting costs
         #: the same dictionary the set already was.
         self.book_counts = {}
+        #: `{book_id: the first message seen in that book}`, and the ids of
+        #: the books whose own messages differ among themselves. **The row's
+        #: example is not a statement about any one book.** One rule key can
+        #: carry several sentences — `opf.content_document.
+        #: property_used_undeclared` says "svg" of one document and "remote
+        #: resource" of a stylesheet — and the per-book export used to write
+        #: the library's first sentence, unhedged, against every book in the
+        #: row. DNSB's cover.xhtml was reported as a stylesheet with a remote
+        #: resource that way (MobileRead 375207 #52).
+        self.book_examples = {}
+        self.book_varies = set()
 
     def add(self, finding, book_id):
         self.findings += 1
         self.book_counts[book_id] = self.book_counts.get(book_id, 0) + 1
         if not self.varies and finding.message != self.example:
             self.varies = True
+        seen = self.book_examples.setdefault(book_id, finding.message)
+        if seen != finding.message:
+            self.book_varies.add(book_id)
         # Keep the worst severity seen. A single id can arrive at two levels
         # (a rule gated differently per EPUB version), and a row must not
         # claim to be milder than its worst member.
@@ -129,6 +144,20 @@ class RuleGroup:
         book's identifier.
         """
         return ('e.g. ' + self.example) if self.varies else self.example
+
+    def label_for(self, book_id):
+        """What this row says **about one book**: that book's own message,
+        `e.g.` when the book itself carries more than one.
+
+        A group whose messages all agree needs nothing per book, and a report
+        read back from a scan saved before this existed has nothing per book
+        to give. Both fall back to `label`, which is hedged exactly when the
+        row's messages differ — an example, never a claim about this book.
+        """
+        own = self.book_examples.get(book_id)
+        if own is None:
+            return self.label
+        return ('e.g. ' + own) if book_id in self.book_varies else own
 
     @property
     def is_advisory(self):
