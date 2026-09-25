@@ -1,6 +1,6 @@
 # Changelog — epubveri library for calibre
 
-## [Unreleased]
+## [0.5.3] — 2026-09-25
 
 - **Each book's row in the per-book export says that book's own message.**
   A row is one rule, and one rule can carry more than one sentence:
