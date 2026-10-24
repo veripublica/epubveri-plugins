@@ -1,10 +1,7 @@
 # epubveri-plugins — running the epubveri binary
 # Copyright (C) 2026 Baris Kayadelen
-#
-# This program is free software: you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by the Free
-# Software Foundation, either version 3 of the License, or (at your option)
-# any later version. See the LICENSE file at the root of this repository.
+# SPDX-License-Identifier: GPL-3.0-only
+# See the LICENSE file at the root of this repository.
 """Invoke epubveri and hand back a parsed envelope.
 
 `-u` and `--advisory` are passed **always**, and that is a deliberate reversal

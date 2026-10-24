@@ -1,10 +1,7 @@
 # epubveri library — getting a verified binary, and sharing it
 # Copyright (C) 2026 Baris Kayadelen
-#
-# This program is free software: you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by the Free
-# Software Foundation, either version 3 of the License, or (at your option)
-# any later version. See the LICENSE file at the root of this repository.
+# SPDX-License-Identifier: GPL-3.0-only
+# See the LICENSE file at the root of this repository.
 """Where the epubveri binary lives, and why it is this plugin's alone.
 
 **This plugin keeps its own copy of the validator, and does not share the

@@ -1,16 +1,13 @@
 # epubveri-plugins — finding, fetching and verifying the epubveri binary
 # Copyright (C) 2026 Baris Kayadelen
-#
-# This program is free software: you can redistribute it and/or modify it
-# under the terms of the GNU General Public License as published by the Free
-# Software Foundation, either version 3 of the License, or (at your option)
-# any later version. See the LICENSE file at the root of this repository.
+# SPDX-License-Identifier: GPL-3.0-only
+# See the LICENSE file at the root of this repository.
 """Get a trustworthy epubveri binary onto the user's machine.
 
 **No binary is shipped inside the plugin zip, and that is a licence decision
 as much as a size one.** epubveri is AGPL-3.0-only OR commercial; this plugin
-is GPL-3.0. Because the plugin only ever runs the binary as a subprocess and
-never links it, and because the user's own machine fetches it from the
+is GPL-3.0-only. Because the plugin only ever runs the binary as a subprocess
+and never links it, and because the user's own machine fetches it from the
 project's releases, a plugin package distributes no AGPL code at all and
 carries none of the notice or source-offer obligations that would follow.
 Putting the binary in the zip would change that on the day it happened.
@@ -172,7 +169,8 @@ def _safe_extract_tar(tf, dest):
     binary is ever run. Python's `data` filter refuses all three. It exists
     from 3.12 and was backported to 3.8.17, 3.9.17, 3.10.12 and 3.11.4, and
     the interpreters Sigil and calibre bundle are not all that new, so older
-    ones get the same refusals by hand. Our archives hold one regular file.
+    ones get the same refusals by hand. Our archives hold regular files in one
+    folder: the binary, its licences and a README.
     """
     if hasattr(tarfile, "data_filter"):
         tf.extractall(dest, filter="data")

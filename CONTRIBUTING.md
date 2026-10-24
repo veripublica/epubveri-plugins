@@ -3,14 +3,14 @@
 Contributions are welcome, and **this repository needs no CLA** — which is
 worth saying plainly, because its sibling does.
 
-[epubveri](https://github.com/veripublica/epubveri) is dual-licensed, AGPL-3.0
-or commercial, and selling a commercial licence requires one copyright holder,
-so it cannot merge outside code until a contributor agreement exists. These
-plugins are not sold. They are GPL-3.0-only, they stay that way, and a pull
-request here is an ordinary pull request.
+[epubveri](https://github.com/veripublica/epubveri) is dual-licensed,
+AGPL-3.0-only or commercial, and selling a commercial licence requires one
+copyright holder, so it cannot merge outside code until a contributor
+agreement exists. These plugins are not sold. They are GPL-3.0-only, they
+stay that way, and a pull request here is an ordinary pull request.
 
 You keep your copyright. By opening a pull request you licence your work under
-the GPL-3.0, which is what the rest of the repository is under.
+the GPL-3.0-only, which is what the rest of the repository is under.
 
 ## Before you open a pull request
 
