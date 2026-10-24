@@ -514,9 +514,9 @@ class EpubveriLibraryAction(InterfaceAction):
         A ten-minute scan whose window closes is a ten-minute scan lost, and
         the closing is one stray click. This is the whole of the answer: the
         report object is still in memory, and rebuilding the dialog over it
-        costs nothing. It does not survive calibre restarting, which the menu
-        item does not pretend otherwise about — it simply is not there when
-        there is nothing to show.
+        costs nothing. After a restart it comes off disk instead — the last
+        whole-library scan is stored (`store.py`); a selection scan is not, so
+        it lasts only for the session.
         """
         if self.last_report is None:
             # Loaded here rather than at startup. A stored report is megabytes

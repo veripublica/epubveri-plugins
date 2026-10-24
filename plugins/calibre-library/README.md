@@ -10,7 +10,8 @@ answers **which** books have a problem, that one answers **what** the problem
 is. They are one product on two surfaces, not two products: same binary, same
 findings, same message ids.
 
-> **Status: 0.5.0.** It is developed and tested on calibre 9.14 on macOS. It
+> **Released through [0.5.3](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-library-v0.5.3).**
+> It is developed and tested on calibre 9.14 on macOS. It
 > has been run by users elsewhere — including a Windows library of about
 > 18,000 books — but no other platform is tested here.
 > `minimum_calibre_version` is 6.0 because that is the oldest release it can
@@ -49,8 +50,8 @@ place.
 **The report window stays open while you do that**, so a row is a question you
 can ask again — and again of the next row — rather than one that costs the
 scan. If you close it anyway, **Show the last report** in the toolbar menu
-brings it back without re-reading a book. It does not survive calibre
-restarting.
+brings it back without re-reading a book — after calibre has been restarted
+too, since the last whole-library scan is kept on disk (see below).
 
 **Export…** writes either of two CSVs: the report you are looking at, one row
 per defect, or one row per book and defect — book id, title, message, severity
