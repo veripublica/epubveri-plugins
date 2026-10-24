@@ -16,14 +16,15 @@ the same drawing:
     plugins/sigil/plugin.svg          Sigil prefers the SVG
     plugins/sigil/plugin.png          and falls back to the PNG
     plugins/calibre/plugin.png        calibre's `get_icons` reads it from the zip
-    plugins/calibre-library/plugin.png  the same mark with a stack behind it
+    plugins/calibre-library/plugin.png  the monogram on calibre's own book
 
 **Two marks now, and the second one exists because of where they meet.** The
 library plugin and the editor plugin can both sit in one calibre toolbar, and
 until this was written they shipped byte-identical icons — two buttons a user
-could not tell apart. The library mark is the same page and the same tick with
-two sheets behind it: one book against many, which is the actual difference
-between the two plugins, drawn rather than captioned.
+could not tell apart. The library mark is the same tick on a book drawn the way
+calibre draws its own (see `BOOK_*` below): a document you edit against a
+library, which is the actual difference between the two plugins, drawn rather
+than captioned.
 
 Colour is not the discriminator, deliberately. DiapDealer's constraint below is
 about themes, and a hue difference is the first thing a theme takes away; a
@@ -45,7 +46,7 @@ a second.
 (owner, 2026-09-07).** The monogram is the tick — read as a check here and as
 the `veri` **V** when it needs to be, which is what lets it carry across
 products without meaning "passed" in one that verifies nothing. The container
-says which product: one sheet is epubveri, three sheets is the library
+says which product: one sheet is epubveri, a calibre book is the library
 checker. **A new product is a new container around the same glyph**, which is
 why `glyph()` and the container builders below never touch each other.
 
