@@ -1,5 +1,10 @@
 # epubveri for Sigil
 
+> epubveri for Sigil now lives in
+> [veripublica/sigil-plugins](https://github.com/veripublica/sigil-plugins).
+> Releases from 0.3.5 and new issues are there. This folder is the 0.3.4 source
+> and no longer changes.
+
 Checks the book you have open in [Sigil](https://sigil-ebook.com/) against the
 EPUB specification with [epubveri](https://github.com/veripublica/epubveri),
 and puts each finding on the line it belongs to. **It reads your book and

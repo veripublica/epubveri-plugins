@@ -11,7 +11,7 @@ library are the host's; the verdict is epubveri's.
 
 | plugin | for | status |
 |---|---|---|
-| [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | **released — [0.3.4](https://github.com/veripublica/epubveri-plugins/releases/tag/sigil-v0.3.4)** |
+| [`plugins/sigil`](plugins/sigil) | [Sigil](https://sigil-ebook.com/) | **moved** — releases from 0.3.5 are in [veripublica/sigil-plugins](https://github.com/veripublica/sigil-plugins/releases) |
 | [`plugins/calibre`](plugins/calibre) | [calibre](https://calibre-ebook.com/)'s Edit Book | **released — [0.4.5](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-v0.4.5)** |
 | [`plugins/calibre-library`](plugins/calibre-library) | calibre's **library** view | **released — [0.5.3](https://github.com/veripublica/epubveri-plugins/releases/tag/calibre-library-v0.5.3)** |
 
