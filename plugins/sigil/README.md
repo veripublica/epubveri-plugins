@@ -2,7 +2,9 @@
 
 > epubveri for Sigil now lives in
 > [veripublica/sigil-plugins](https://github.com/veripublica/sigil-plugins).
-> Releases from 0.3.5 and new issues are there. This folder is the 0.3.4 source
+> Releases from 0.3.5 are in its
+> [download table](https://github.com/veripublica/sigil-plugins#download), and new
+> issues go there too. This folder is the 0.3.4 source
 > and no longer changes.
 
 Checks the book you have open in [Sigil](https://sigil-ebook.com/) against the
